@@ -17,6 +17,7 @@ class EvaluationService:
     - Feedback-only
     - No enforcement
     - Staff nurse is advisory only
+    - Agent outputs logged as debug evidence
     """
 
     def __init__(
@@ -60,7 +61,9 @@ class EvaluationService:
             action_events = session.get("action_events", [])
 
         rag_query = transcript or (
-            f"{step} procedure actions" if action_events else "clinical nursing evaluation"
+            f"{step} procedure actions"
+            if action_events
+            else "clinical nursing evaluation"
         )
 
         rag = await retrieve_with_rag(
@@ -94,15 +97,18 @@ class EvaluationService:
 
         step = evaluator_outputs[0].step
 
-        # ---- Coordinator aggregation ----
+        # ---- Coordinator aggregation (scores + readiness) ----
         coordinator_output = self.coordinator.aggregate(
             evaluations=evaluator_outputs,
             current_step=step
         )
 
-        # ---- MCQ handling ----
+        # ---- MCQ handling (ASSESSMENT only) ----
         if step == "ASSESSMENT":
-            questions = session["scenario_metadata"].get("assessment_questions", [])
+            questions = session["scenario_metadata"].get(
+                "assessment_questions", []
+            )
+
             if questions and student_mcq_answers:
                 mcq_result = self.mcq_evaluator.validate_mcq_answers(
                     student_answers=student_mcq_answers,
@@ -148,10 +154,10 @@ class EvaluationService:
                 scenario_metadata=session["scenario_metadata"]
             )
 
-        # ---- Build feedback payload ----
+        # ---- Build user-facing feedback ----
         feedback_items: List[Dict[str, Any]] = []
 
-        # Evaluator feedback
+        # Aggregated evaluator feedback (summary only)
         feedback_items.append(
             Feedback(
                 text=coordinator_output.get("overall_feedback", ""),
@@ -183,11 +189,19 @@ class EvaluationService:
                 ).to_dict()
             )
 
+        # ---- Final payload ----
         payload = {
             "step": step,
             "scores": coordinator_output.get("scores"),
             "readiness": coordinator_output.get("readiness"),
-            "feedback": feedback_items
+            "feedback": feedback_items,
+
+            # 🔍 DEBUG / EVIDENCE BLOCK (Week-8)
+            "debug": {
+                "agent_outputs": [
+                    ev.dict() for ev in evaluator_outputs
+                ]
+            }
         }
 
         self.session_manager.store_last_evaluation(
