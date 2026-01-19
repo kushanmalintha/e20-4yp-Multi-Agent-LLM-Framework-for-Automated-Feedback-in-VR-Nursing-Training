@@ -1,83 +1,69 @@
-from app.agents.agent_base import BaseAgent
+from openai import AsyncOpenAI
+from app.core.config import OPENAI_API_KEY, OPENAI_CHAT_MODEL
+from app.core.step_guidance import STEP_GUIDANCE
 
 
-class StaffNurseAgent(BaseAgent):
+class StaffNurseAgent:
     """
-    Staff Nurse Model (Week-8)
+    Conversational supervising nurse.
 
-    Responsibilities:
-    - Provide realistic supervisory responses
-    - Confirm supervision / permission when asked
-    - Confirm suitability of materials when explicitly requested
-    - Offer brief, professional guidance
-
-    Does NOT:
-    - Evaluate student performance
-    - Identify missing points
-    - Score or block progression
-    - Use RAG or Firestore directly
+    - Does NOT evaluate
+    - Does NOT approve or block steps
+    - Provides step guidance based on student intent
     """
 
     def __init__(self):
-        super().__init__()
+        self.client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+        self.model = OPENAI_CHAT_MODEL
 
     async def respond(
         self,
         student_input: str,
-        scenario_metadata: dict,
+        current_step: str,
+        next_step: str | None
     ) -> str:
         """
-        Generate a staff nurse response based on student request
-        and known scenario information.
-
-        Returns:
-            Plain text response (no JSON).
+        Responds with instructional guidance based on student intent.
         """
 
-        patient = scenario_metadata.get("patient_history", {})
-        wound = scenario_metadata.get("wound_details", {})
-
-        patient_name = patient.get("name", "the patient")
-        patient_age = patient.get("age", "unknown age")
-        surgery = patient.get("surgery_details", {}).get("procedure", "the procedure")
-        wound_location = wound.get("location", "the wound site")
+        current_guidance = STEP_GUIDANCE.get(current_step, "")
+        next_guidance = STEP_GUIDANCE.get(next_step, "") if next_step else ""
 
         system_prompt = (
-            "You are a senior staff nurse supervising a student nurse.\n"
-            "Your role is to provide supervision and confirmation ONLY.\n\n"
-
+            "You are a supervising staff nurse guiding a nursing student.\n"
+            "Your role is to explain what the student should do.\n\n"
             "Rules:\n"
-            "- Do NOT evaluate the student.\n"
-            "- Do NOT identify missing history points.\n"
-            "- Do NOT judge correctness of actions.\n"
-            "- Do NOT provide medical advice beyond confirmation.\n"
-            "- Do NOT mention evaluation criteria or guidelines.\n"
-            "- Respond briefly, professionally, and realistically.\n"
-            "- If information is not available, say you cannot confirm it.\n\n"
-
-            "You only know:\n"
-            "- Patient identity\n"
-            "- Wound location\n"
-            "- That wound care has been prescribed\n"
+            "- Do NOT evaluate performance\n"
+            "- Do NOT say whether the student did well or poorly\n"
+            "- Do NOT grant permission\n"
+            "- If the student seems to ask what to do next or indicates they are finished, "
+            "explain the NEXT step\n"
+            "- Otherwise, explain the CURRENT step\n"
+            "- Respond in clear, supportive, spoken-friendly language\n"
         )
 
         user_prompt = (
-            f"PATIENT:\n"
-            f"Name: {patient_name}\n"
-            f"Age: {patient_age}\n"
-            f"Surgery: {surgery}\n"
-            f"Wound Location: {wound_location}\n\n"
-            f"STUDENT REQUEST:\n{student_input}\n"
+            f"CURRENT STEP: {current_step}\n"
+            f"CURRENT STEP GUIDANCE: {current_guidance}\n"
+            f"NEXT STEP: {next_step}\n"
+            f"NEXT STEP GUIDANCE: {next_guidance}\n\n"
+            f"STUDENT MESSAGE:\n{student_input}\n"
         )
 
-        response_text = await self.run(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            temperature=0.2,
+        response = await self.client.responses.create(
+            model=self.model,
+            input=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.3,
         )
 
-        # Fallback to avoid empty responses
-        if not response_text:
-            return "Yes, please proceed carefully and let me know if you need assistance."
+        output_text = ""
+        for item in response.output:
+            if item.type == "message":
+                for part in item.content:
+                    if part.type in ("text", "output_text"):
+                        output_text += part.text
 
-        return response_text.strip()
+        return output_text.strip()

@@ -3,21 +3,24 @@ from typing import Dict, List, Any, Optional
 from app.rag.retriever import retrieve_with_rag
 from app.core.coordinator import Coordinator
 from app.services.session_manager import SessionManager
+from app.core.state_machine import Step, next_step
+
 from app.utils.mcq_evaluator import MCQEvaluator
 from app.utils.schema import EvaluatorResponse
 from app.services.conversation_manager import ConversationManager
-from app.services.history_completeness_service import HistoryCompletenessService
 from app.utils.feedback_schema import Feedback
 
 
 class EvaluationService:
     """
-    Week-8 FINAL Evaluation Orchestrator
+    FINAL Evaluation Orchestrator
 
-    - Feedback-only
-    - No enforcement
-    - Staff nurse is advisory only
-    - Agent outputs logged as debug evidence
+    - Feedback-only (formative)
+    - No enforcement or locking
+    - Student feedback comes directly from evaluator agents
+    - Coordinator is numeric-only (scores, readiness)
+    - Staff nurse provides conversational step guidance
+    - Enum-safe state machine usage
     """
 
     def __init__(
@@ -30,11 +33,10 @@ class EvaluationService:
         self.session_manager = session_manager
         self.mcq_evaluator = MCQEvaluator()
         self.conversation_manager = ConversationManager()
-        self.history_service = HistoryCompletenessService()
         self.staff_nurse_agent = staff_nurse_agent
 
     # ------------------------------------------------
-    # Context preparation
+    # Context preparation for evaluator agents
     # ------------------------------------------------
     async def prepare_agent_context(
         self,
@@ -51,13 +53,13 @@ class EvaluationService:
         transcript = ""
         action_events: List[Dict[str, Any]] = []
 
-        if step == "HISTORY":
+        if step == Step.HISTORY.value:
             transcript = self.conversation_manager.get_aggregated_transcript(
                 session_id=session_id,
                 step=step
             )
 
-        elif step in ["CLEANING", "DRESSING"]:
+        elif step in [Step.CLEANING.value, Step.DRESSING.value]:
             action_events = session.get("action_events", [])
 
         rag_query = transcript or (
@@ -80,31 +82,32 @@ class EvaluationService:
         }
 
     # ------------------------------------------------
-    # Evaluation aggregation
+    # Aggregation + feedback construction
     # ------------------------------------------------
     async def aggregate_evaluations(
         self,
         session_id: str,
         evaluator_outputs: List[EvaluatorResponse],
         student_mcq_answers: Optional[Dict[str, str]] = None,
-        request_staff_permission: bool = False,
-        student_request_text: Optional[str] = None
+        student_message_to_nurse: Optional[str] = None
     ) -> Dict[str, Any]:
 
         session = self.session_manager.get_session(session_id)
         if not session:
             raise ValueError("Session not found")
 
-        step = evaluator_outputs[0].step
+        # ---- Convert step string → enum ----
+        step_str = evaluator_outputs[0].step.lower()
+        current_step = Step(step_str)
 
-        # ---- Coordinator aggregation (scores + readiness) ----
+        # ---- Coordinator aggregation (NUMERIC ONLY) ----
         coordinator_output = self.coordinator.aggregate(
             evaluations=evaluator_outputs,
-            current_step=step
+            current_step=current_step.value
         )
 
         # ---- MCQ handling (ASSESSMENT only) ----
-        if step == "ASSESSMENT":
+        if current_step == Step.ASSESSMENT:
             questions = session["scenario_metadata"].get(
                 "assessment_questions", []
             )
@@ -124,62 +127,61 @@ class EvaluationService:
 
             coordinator_output["mcq_result"] = mcq_result
 
-        # ---- HISTORY completeness (system feedback only) ----
-        history_summary = None
-        if step == "HISTORY":
-            transcript = self.conversation_manager.get_aggregated_transcript(
-                session_id=session_id,
-                step=step
-            )
-
-            required_points = session["scenario_metadata"].get(
-                "required_conversation_points", []
-            )
-
-            history_summary = self.history_service.analyze(
-                transcript=transcript,
-                required_points=required_points
-            )
-
-        # ---- Staff Nurse interaction (plain text only) ----
-        staff_nurse_text = None
-        if (
-            step == "HISTORY"
-            and request_staff_permission
-            and self.staff_nurse_agent
-            and student_request_text
-        ):
-            staff_nurse_text = await self.staff_nurse_agent.respond(
-                student_input=student_request_text,
-                scenario_metadata=session["scenario_metadata"]
-            )
-
-        # ---- Build user-facing feedback ----
+        # ------------------------------------------------
+        # Build STUDENT-FACING feedback from AGENTS
+        # ------------------------------------------------
         feedback_items: List[Dict[str, Any]] = []
 
-        # Aggregated evaluator feedback (summary only)
-        feedback_items.append(
-            Feedback(
-                text=coordinator_output.get("overall_feedback", ""),
-                speaker="system",
-                category="knowledge",
-                timing="post_step"
-            ).to_dict()
-        )
+        for ev in evaluator_outputs:
+            agent_text_parts = []
 
-        # History completeness feedback
-        if history_summary:
+            if ev.strengths:
+                agent_text_parts.append(
+                    "Strengths: " + ", ".join(ev.strengths)
+                )
+
+            if ev.issues_detected:
+                agent_text_parts.append(
+                    "Issues: " + ", ".join(ev.issues_detected)
+                )
+
+            agent_text_parts.append(
+                f"Overall assessment: {ev.verdict}."
+            )
+
+            agent_text_parts.append(
+                ev.explanation
+            )
+
             feedback_items.append(
                 Feedback(
-                    text=history_summary["summary"],
+                    text=" ".join(agent_text_parts),
                     speaker="system",
-                    category="knowledge",
+                    category=(
+                        "communication"
+                        if ev.agent_name == "CommunicationAgent"
+                        else "knowledge"
+                        if ev.agent_name == "KnowledgeAgent"
+                        else "clinical"
+                    ),
                     timing="post_step"
                 ).to_dict()
             )
 
-        # Staff nurse feedback
-        if staff_nurse_text:
+        # ---- Staff Nurse conversational guidance ----
+        if self.staff_nurse_agent and student_message_to_nurse:
+            try:
+                next_step_enum = next_step(current_step)
+                next_step_str = next_step_enum.value
+            except ValueError:
+                next_step_str = None
+
+            staff_nurse_text = await self.staff_nurse_agent.respond(
+                student_input=student_message_to_nurse,
+                current_step=current_step.value,
+                next_step=next_step_str
+            )
+
             feedback_items.append(
                 Feedback(
                     text=staff_nurse_text,
@@ -189,14 +191,16 @@ class EvaluationService:
                 ).to_dict()
             )
 
-        # ---- Final payload ----
+        # ------------------------------------------------
+        # Final payload
+        # ------------------------------------------------
         payload = {
-            "step": step,
+            "step": current_step.value,
             "scores": coordinator_output.get("scores"),
             "readiness": coordinator_output.get("readiness"),
             "feedback": feedback_items,
 
-            # 🔍 DEBUG / EVIDENCE BLOCK (Week-8)
+            # ---- INTERNAL EVIDENCE ----
             "debug": {
                 "agent_outputs": [
                     ev.dict() for ev in evaluator_outputs

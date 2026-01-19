@@ -15,9 +15,6 @@ from app.agents.patient_agent import PatientAgent
 from app.agents.staff_nurse_agent import StaffNurseAgent
 
 
-# -------------------------------------------------
-# Logging setup
-# -------------------------------------------------
 LOG_DIR = Path(__file__).resolve().parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 
@@ -26,34 +23,18 @@ async def run_full_system_test():
     """
     Manual end-to-end system validation (Week-8).
 
-    VALIDATES:
-    - Multi-turn history taking with real patient responses
-    - Deterministic history completeness feedback
-    - Staff nurse supervision interaction
-    - Action-event ingestion
-    - Feedback-only evaluation (no enforcement)
+    EXPECTATIONS:
+    - Each evaluator agent produces visible feedback
+    - Feedback text is non-empty
+    - Coordinator provides scores only
+    - Staff nurse provides optional guidance
     """
 
     scenario_id = "week6_mock_scenario"
     student_id = "manual_test_student"
 
-    print("\n================================================")
-    print(" FULL SYSTEM MANUAL TEST (Week-8)")
-    print("================================================\n")
-
-    log = {
-        "scenario_id": scenario_id,
-        "student_id": student_id,
-        "started_at": datetime.utcnow().isoformat(),
-        "steps": []
-    }
-
-    # -------------------------------------------------
-    # Core services
-    # -------------------------------------------------
     session_manager = SessionManager()
     coordinator = Coordinator()
-
     staff_nurse_agent = StaffNurseAgent()
 
     evaluation_service = EvaluationService(
@@ -71,23 +52,24 @@ async def run_full_system_test():
         ClinicalAgent()
     ]
 
-    # -------------------------------------------------
-    # Create session
-    # -------------------------------------------------
     session_id = session_manager.create_session(
         scenario_id=scenario_id,
         student_id=student_id
     )
 
-    print(f"[SESSION CREATED] {session_id}")
-
     scenario_meta = session_manager.get_session(session_id)["scenario_metadata"]
     patient_history = scenario_meta.get("patient_history", {})
 
-    # =================================================
-    # HISTORY – Multi-turn conversation
-    # =================================================
-    print("\n================ HISTORY =================")
+    log = {
+        "scenario_id": scenario_id,
+        "student_id": student_id,
+        "steps": []
+    }
+
+    # ==============================
+    # HISTORY
+    # ==============================
+    print("\n===== HISTORY =====")
 
     conversation = [
         "Hello, I am a nursing student. Can you confirm your name?",
@@ -97,81 +79,59 @@ async def run_full_system_test():
 
     for msg in conversation:
         evaluation_service.conversation_manager.add_turn(
-            session_id, "HISTORY", "student", msg
+            session_id, "history", "student", msg
         )
-        print("[STUDENT]", msg)
-
-        conversation_history = evaluation_service.conversation_manager.conversations[
-            session_id
-        ]["HISTORY"]
 
         patient_response = await patient_agent.respond(
             patient_history=patient_history,
-            conversation_history=conversation_history,
+            conversation_history=evaluation_service.conversation_manager.conversations[
+                session_id
+            ]["history"],
             student_message=msg
         )
 
-        print("[PATIENT]", patient_response)
-
         evaluation_service.conversation_manager.add_turn(
-            session_id, "HISTORY", "patient", patient_response
+            session_id, "history", "patient", patient_response
         )
 
-    # ---- Evaluate HISTORY ----
     context = await evaluation_service.prepare_agent_context(
         session_id=session_id,
-        step="HISTORY"
+        step="history"
     )
 
-    evaluator_outputs = []
-    for agent in agents:
-        result = await agent.evaluate(
-            current_step="HISTORY",
+    evaluator_outputs = [
+        await agent.evaluate(
+            current_step="history",
             student_input=context["transcript"],
             scenario_metadata=context["scenario_metadata"],
             rag_response=context["rag_context"]
         )
-        evaluator_outputs.append(result)
-        print(f"{result.agent_name}: {result.verdict}")
+        for agent in agents
+    ]
 
     aggregated = await evaluation_service.aggregate_evaluations(
         session_id=session_id,
-        evaluator_outputs=evaluator_outputs
+        evaluator_outputs=evaluator_outputs,
+        student_message_to_nurse="I think I am done. What should I do next?"
     )
 
-    log["steps"].append({
-        "step": "HISTORY",
-        "conversation": context["transcript"],
-        "feedback": aggregated,
-        "timestamp": datetime.utcnow().isoformat()
-    })
+    print("\n--- FEEDBACK OUTPUTS ---")
+    for fb in aggregated["feedback"]:
+        print(f"[{fb['speaker'].upper()} | {fb['category']}]\n{fb['text']}\n")
+        assert fb["text"].strip() != ""
 
-    # =================================================
-    # STAFF NURSE – Supervision request (Week-8)
-    # =================================================
-    print("\n================ STAFF NURSE =================")
-
-    student_request = "May I proceed with the wound care under your supervision?"
-
-    staff_nurse_reply = await staff_nurse_agent.respond(
-        student_input=student_request,
-        scenario_metadata=scenario_meta
-    )
-
-    print("[STUDENT]", student_request)
-    print("[STAFF NURSE]", staff_nurse_reply)
+    print("--- SCORES ---")
+    print(aggregated["scores"])
 
     log["steps"].append({
-        "step": "STAFF_NURSE",
-        "student_request": student_request,
-        "staff_nurse_response": staff_nurse_reply,
-        "timestamp": datetime.utcnow().isoformat()
+        "step": "history",
+        "feedback": aggregated
     })
 
-    # =================================================
-    # ASSESSMENT – MCQs
-    # =================================================
-    print("\n================ ASSESSMENT =================")
+    # ==============================
+    # ASSESSMENT
+    # ==============================
+    print("\n===== ASSESSMENT =====")
 
     student_mcq_answers = {
         "q1": "Remove the old dressing",
@@ -180,18 +140,18 @@ async def run_full_system_test():
 
     context = await evaluation_service.prepare_agent_context(
         session_id=session_id,
-        step="ASSESSMENT"
+        step="assessment"
     )
 
-    evaluator_outputs = []
-    for agent in agents:
-        result = await agent.evaluate(
-            current_step="ASSESSMENT",
+    evaluator_outputs = [
+        await agent.evaluate(
+            current_step="assessment",
             student_input="Assessment completed.",
             scenario_metadata=context["scenario_metadata"],
             rag_response=context["rag_context"]
         )
-        evaluator_outputs.append(result)
+        for agent in agents
+    ]
 
     aggregated = await evaluation_service.aggregate_evaluations(
         session_id=session_id,
@@ -199,114 +159,65 @@ async def run_full_system_test():
         student_mcq_answers=student_mcq_answers
     )
 
+    print("\n--- FEEDBACK OUTPUTS ---")
+    for fb in aggregated["feedback"]:
+        print(f"[{fb['speaker'].upper()} | {fb['category']}]\n{fb['text']}\n")
+        assert fb["text"].strip() != ""
+
     log["steps"].append({
-        "step": "ASSESSMENT",
-        "mcq_result": aggregated.get("mcq_result"),
-        "feedback": aggregated,
-        "timestamp": datetime.utcnow().isoformat()
+        "step": "assessment",
+        "feedback": aggregated
     })
 
-    # =================================================
-    # CLEANING – Action events
-    # =================================================
-    print("\n================ CLEANING =================")
+    # ==============================
+    # CLEANING & DRESSING (brief)
+    # ==============================
+    for step, actions in {
+        "cleaning": ["SKIP_HAND_WASH", "CLEAN_WOUND"],
+        "dressing": ["APPLY_DRESSING", "SECURE_BANDAGE"]
+    }.items():
 
-    actions = ["SKIP_HAND_WASH", "CLEAN_WOUND"]
+        print(f"\n===== {step.upper()} =====")
 
-    for act in actions:
-        action_service.record_action(
+        for act in actions:
+            action_service.record_action(session_id, act, step)
+
+        context = await evaluation_service.prepare_agent_context(
             session_id=session_id,
-            action_type=act,
-            step="CLEANING"
+            step=step
         )
-        print("[ACTION]", act)
 
-    context = await evaluation_service.prepare_agent_context(
-        session_id=session_id,
-        step="CLEANING"
-    )
+        evaluator_outputs = [
+            await agent.evaluate(
+                current_step=step,
+                student_input="",
+                scenario_metadata=context["scenario_metadata"],
+                rag_response=context["rag_context"]
+            )
+            for agent in agents
+        ]
 
-    evaluator_outputs = []
-    for agent in agents:
-        result = await agent.evaluate(
-            current_step="CLEANING",
-            student_input="",
-            scenario_metadata=context["scenario_metadata"],
-            rag_response=context["rag_context"]
-        )
-        evaluator_outputs.append(result)
-
-    aggregated = await evaluation_service.aggregate_evaluations(
-        session_id=session_id,
-        evaluator_outputs=evaluator_outputs
-    )
-
-    log["steps"].append({
-        "step": "CLEANING",
-        "actions": context["action_events"],
-        "feedback": aggregated,
-        "timestamp": datetime.utcnow().isoformat()
-    })
-
-    # =================================================
-    # DRESSING – Action events
-    # =================================================
-    print("\n================ DRESSING =================")
-
-    actions = ["APPLY_DRESSING", "SECURE_BANDAGE"]
-
-    for act in actions:
-        action_service.record_action(
+        aggregated = await evaluation_service.aggregate_evaluations(
             session_id=session_id,
-            action_type=act,
-            step="DRESSING"
+            evaluator_outputs=evaluator_outputs
         )
-        print("[ACTION]", act)
 
-    context = await evaluation_service.prepare_agent_context(
-        session_id=session_id,
-        step="DRESSING"
-    )
+        for fb in aggregated["feedback"]:
+            print(f"[{fb['speaker'].upper()} | {fb['category']}]\n{fb['text']}\n")
+            assert fb["text"].strip() != ""
 
-    evaluator_outputs = []
-    for agent in agents:
-        result = await agent.evaluate(
-            current_step="DRESSING",
-            student_input="",
-            scenario_metadata=context["scenario_metadata"],
-            rag_response=context["rag_context"]
-        )
-        evaluator_outputs.append(result)
+        log["steps"].append({
+            "step": step,
+            "feedback": aggregated
+        })
 
-    aggregated = await evaluation_service.aggregate_evaluations(
-        session_id=session_id,
-        evaluator_outputs=evaluator_outputs
-    )
-
-    log["steps"].append({
-        "step": "DRESSING",
-        "actions": context["action_events"],
-        "feedback": aggregated,
-        "timestamp": datetime.utcnow().isoformat()
-    })
-
-    # -------------------------------------------------
-    # Save log
-    # -------------------------------------------------
-    log["finished_at"] = datetime.utcnow().isoformat()
     log_path = LOG_DIR / f"manual_test_week8_{session_id}.json"
-
     with open(log_path, "w", encoding="utf-8") as f:
         json.dump(log, f, indent=2)
 
-    print("\n================================================")
-    print(" WEEK-8 MANUAL SYSTEM TEST COMPLETE")
-    print(f" JSON LOG SAVED → {log_path}")
-    print("================================================\n")
+    print("\n✅ WEEK-8 TEST PASSED")
+    print(f"Log saved to {log_path}")
 
 
-# -------------------------------------------------
-# Entry point
-# -------------------------------------------------
 if __name__ == "__main__":
     asyncio.run(run_full_system_test())
