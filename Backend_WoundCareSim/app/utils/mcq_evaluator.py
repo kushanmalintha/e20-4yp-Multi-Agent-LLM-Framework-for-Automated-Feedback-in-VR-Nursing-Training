@@ -17,22 +17,12 @@ class MCQEvaluator:
         student_answers: Dict[str, str],
         assessment_questions: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
-        """
-        Validate MCQ answers against Firestore questions.
-
-        Firestore format (per question):
-        {
-          "id": "q1",
-          "question": "...",
-          "options": [...],
-          "correct_answer": "Wash hands"
-        }
-        """
 
         if not assessment_questions:
             return {
                 "total_questions": 0,
                 "correct_count": 0,
+                "score": 0.0,
                 "feedback": [],
                 "summary": "No MCQ questions available"
             }
@@ -44,6 +34,7 @@ class MCQEvaluator:
             qid = q.get("id")
             question_text = q.get("question", "")
             correct_answer = q.get("correct_answer")
+            explanation = q.get("explanation", "No explanation provided.")
 
             student_answer = student_answers.get(qid)
 
@@ -55,7 +46,7 @@ class MCQEvaluator:
                     "status": "correct",
                     "student_answer": student_answer,
                     "correct_answer": correct_answer,
-                    "explanation": "Correct answer."
+                    "explanation": explanation
                 })
             else:
                 feedback.append({
@@ -64,11 +55,7 @@ class MCQEvaluator:
                     "status": "incorrect",
                     "student_answer": student_answer,
                     "correct_answer": correct_answer,
-                    "explanation": (
-                        f"The correct answer is '{correct_answer}'."
-                        if correct_answer else
-                        "Correct answer not available."
-                    )
+                    "explanation": explanation
                 })
 
         total = len(assessment_questions)
@@ -79,21 +66,5 @@ class MCQEvaluator:
             "correct_count": correct_count,
             "score": round(score, 2),
             "feedback": feedback,
-            "summary": f"{correct_count}/{total} correct"
+            "summary": f"{correct_count}/{total} questions answered correctly"
         }
-
-    # -------------------------------------------------
-    # Optional helper (safe to keep for future use)
-    # -------------------------------------------------
-    @staticmethod
-    def get_mcq_summary(mcq_result: Dict[str, Any]) -> str:
-        """
-        Returns a simple human-readable summary.
-        """
-        total = mcq_result.get("total_questions", 0)
-        correct = mcq_result.get("correct_count", 0)
-
-        if total == 0:
-            return "No MCQs available"
-
-        return f"{correct}/{total} questions answered correctly"

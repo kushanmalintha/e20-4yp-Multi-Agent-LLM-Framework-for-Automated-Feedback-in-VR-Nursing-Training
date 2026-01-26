@@ -1,48 +1,52 @@
-from typing import List
-from openai import OpenAI
-
+import os
+from openai import AsyncOpenAI
 from app.core.config import OPENAI_API_KEY, VECTOR_STORE_ID
+
+if not OPENAI_API_KEY:
+    raise RuntimeError("OPENAI_API_KEY not configured")
+
+if not VECTOR_STORE_ID:
+    raise RuntimeError("VECTOR_STORE_ID not configured")
+
 
 class VectorClient:
     """
-    Handles ONLY OpenAI Vector Store file management.
-    No querying logic lives here.
+    Thin wrapper around OpenAI Vector Store file operations.
+
+    - No embeddings
+    - No chunking
+    - No retrieval logic
     """
 
     def __init__(self):
-        if not OPENAI_API_KEY:
-            raise RuntimeError("OPENAI_API_KEY not configured")
-
-        if not VECTOR_STORE_ID:
-            raise RuntimeError("VECTOR_STORE_ID not configured")
-
-        self.client = OpenAI(api_key=OPENAI_API_KEY)
+        self.client = AsyncOpenAI(api_key=OPENAI_API_KEY)
         self.vector_store_id = VECTOR_STORE_ID
 
     async def upload_file(self, scenario_id: str, file_path: str) -> str:
         """
-        Upload a document to OpenAI and attach it to the vector store.
-        OpenAI performs chunking + embedding automatically.
+        Upload a file to OpenAI Vector Store.
+
+        NOTE:
+        - scenario_id is NOT enforced by the API
+        - scenario scoping is handled operationally during testing
         """
 
-        file_obj = await self.client.files.create(
-            file=open(file_path, "rb"),
-            purpose="assistants",
-            metadata={
-                "scenario_id": scenario_id
-            }
-        )
+        with open(file_path, "rb") as f:
+            uploaded_file = await self.client.files.create(
+                file=f,
+                purpose="assistants"
+            )
 
         await self.client.vector_stores.files.create(
             vector_store_id=self.vector_store_id,
-            file_id=file_obj.id
+            file_id=uploaded_file.id
         )
 
-        return file_obj.id
+        return uploaded_file.id
 
     async def delete_file(self, file_id: str):
         """
-        Remove file and its embeddings from the vector store.
+        Remove a file from the vector store.
         """
         await self.client.vector_stores.files.delete(
             vector_store_id=self.vector_store_id,

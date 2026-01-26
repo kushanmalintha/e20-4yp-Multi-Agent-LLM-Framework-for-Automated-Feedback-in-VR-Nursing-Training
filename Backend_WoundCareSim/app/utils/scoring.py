@@ -16,22 +16,22 @@ VERDICT_SCORE_MAP = {
 # Step-wise agent importance (informational)
 # --------------------------------------
 STEP_WEIGHTS = {
-    "HISTORY": {
+    "history": {
         "CommunicationAgent": 0.5,
         "KnowledgeAgent": 0.4,
         "ClinicalAgent": 0.1,
     },
-    "ASSESSMENT": {
+    "assessment": {
         "CommunicationAgent": 0.3,
         "KnowledgeAgent": 0.7,
         "ClinicalAgent": 0.0,
     },
-    "CLEANING": {
+    "cleaning": {
         "CommunicationAgent": 0.1,
         "KnowledgeAgent": 0.1,
         "ClinicalAgent": 0.8,
     },
-    "DRESSING": {
+    "dressing": {
         "CommunicationAgent": 0.1,
         "KnowledgeAgent": 0.1,
         "ClinicalAgent": 0.8,
@@ -77,5 +77,5 @@ def aggregate_scores(
 
     return {
         "agent_scores": agent_scores,
-        "composite_score": round(composite_score, 3),
+        "step_quality_indicator": round(composite_score, 3),
     }

@@ -1,5 +1,5 @@
 import logging
-from openai import AsyncOpenAI  # Use AsyncOpenAI for async/await
+from openai import AsyncOpenAI
 from app.core.config import (
     OPENAI_API_KEY,
     VECTOR_STORE_ID,
@@ -12,35 +12,41 @@ if not OPENAI_API_KEY:
 if not VECTOR_STORE_ID:
     raise RuntimeError("VECTOR_STORE_ID not configured")
 
-# Initialize Async Client
+logger = logging.getLogger(__name__)
+
 client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+
 
 async def retrieve_with_rag(
     query: str,
     scenario_id: str,
-    system_instruction: str = "You are a helpful assistant."
+    system_instruction: str = "You are a nursing guideline retrieval assistant."
 ):
     """
-    Perform RAG using the stateless OpenAI Responses API.
+    Perform RAG using OpenAI Responses API + managed Vector Store.
+
+    - Stateless
+    - File-first
+    - No manual chunking
+    - No top_k
     """
+
     try:
-        # The simplified Responses API call
         response = await client.responses.create(
             model=OPENAI_CHAT_MODEL,
-            
-            # 1. Vector Store ID goes INSIDE the tool definition here
-            tools=[{
-                "type": "file_search",
-                "vector_store_ids": [VECTOR_STORE_ID]
-            }],
-            
-            # 2. 'input' can handle a list of messages (conversation history)
+            tools=[
+                {
+                    "type": "file_search",
+                    "vector_store_ids": [VECTOR_STORE_ID]
+                }
+            ],
             input=[
                 {
                     "role": "system",
                     "content": (
                         f"{system_instruction}\n"
-                        f"CONSTRAINT: Use only information relevant to scenario_id={scenario_id}."
+                        f"CONSTRAINT: Use only information relevant to scenario_id={scenario_id}.\n"
+                        f"Do NOT invent facts. If information is missing, say so."
                     )
                 },
                 {
@@ -50,12 +56,31 @@ async def retrieve_with_rag(
             ]
         )
 
-        # Accessing the text directly
+        # -----------------------------
+        # SAFE OUTPUT EXTRACTION
+        # -----------------------------
+        rag_text = ""
+
+        if hasattr(response, "output"):
+            for item in response.output:
+                if getattr(item, "type", None) == "message":
+                    for part in getattr(item, "content", []):
+                        if getattr(part, "type", "") in ["text", "output_text"]:
+                            rag_text += getattr(part, "text", "")
+
+        rag_text = rag_text.strip()
+
+        if not rag_text:
+            logger.warning("RAG returned empty context")
+
         return {
-            "text": response.output_text,  # The new API exposes this directly
+            "text": rag_text,
             "raw_response": response
         }
 
     except Exception as e:
-        logging.error(f"RAG Retrieval failed: {e}")
-        raise e
+        logger.error(f"RAG retrieval failed: {e}")
+        return {
+            "text": "",
+            "raw_response": None
+        }

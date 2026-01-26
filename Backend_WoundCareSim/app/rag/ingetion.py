@@ -4,13 +4,19 @@ from app.rag.vector_client import VectorClient
 
 ALLOWED_EXTENSIONS = {".pdf", ".txt"}
 
+
 async def ingest_scenario_documents(
     scenario_id: str,
     file_paths: List[str]
 ) -> List[str]:
     """
-    Uploads scenario reference documents to OpenAI Vector Store.
-    Returns list of OpenAI file_ids.
+    Uploads scenario reference documents to OpenAI Managed Vector Store.
+
+    IMPORTANT DESIGN NOTES:
+    - File-first ingestion
+    - No manual chunking
+    - No custom embeddings
+    - Scenario scoping handled OPERATIONALLY (one scenario per store during testing)
     """
 
     client = VectorClient()
@@ -29,7 +35,8 @@ async def ingest_scenario_documents(
 
 async def delete_scenario_documents(file_ids: List[str]):
     """
-    Deletes all vector store documents associated with a scenario.
+    Deletes vector store files by OpenAI file_id.
+    Safe cleanup helper.
     """
 
     client = VectorClient()
@@ -38,4 +45,4 @@ async def delete_scenario_documents(file_ids: List[str]):
         try:
             await client.delete_file(file_id)
         except Exception:
-            pass  # safe cleanup
+            pass

@@ -2,21 +2,15 @@ from typing import List, Dict, Any
 import json
 
 from app.agents.agent_base import BaseAgent
-from app.utils.narrated_feedback_schema import NarratedFeedbackItem
+from app.utils.narrated_feedback_schema import NarratedFeedback
 
 
 class FeedbackNarratorAgent(BaseAgent):
     """
     Presentation-only LLM agent.
 
-    Converts raw backend feedback into student-friendly,
-    supportive narrated feedback.
-
-    DOES NOT:
-    - evaluate
-    - score
-    - access Firestore
-    - access RAG
+    Converts raw backend feedback into a single
+    student-friendly narrated paragraph.
     """
 
     def __init__(self):
@@ -26,23 +20,18 @@ class FeedbackNarratorAgent(BaseAgent):
         self,
         raw_feedback: List[Dict[str, Any]],
         step: str
-    ) -> List[NarratedFeedbackItem]:
-        """
-        raw_feedback: list of Feedback.to_dict()
-        step: HISTORY / ASSESSMENT / CLEANING / DRESSING
-        """
+    ) -> NarratedFeedback:
 
         system_prompt = self._build_system_prompt(step)
         user_prompt = self._build_user_prompt(raw_feedback)
 
-        # Call BaseAgent.run()
         output_text = await self.run(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            temperature=0.3  # slightly higher for natural tone
+            temperature=0.3
         )
 
-        return self._parse_output(output_text, step)
+        return self._parse_output(output_text, raw_feedback, step)
 
     # --------------------------------------------------
     # Prompt construction
@@ -52,20 +41,27 @@ class FeedbackNarratorAgent(BaseAgent):
         return f"""
 You are a nursing education tutor.
 
-Your job is to rewrite backend-generated feedback
-into clear, supportive, student-friendly explanations.
+Your task is to rewrite backend-generated feedback
+into ONE clear, supportive paragraph addressed to the student.
 
 Context:
-- This is formative nursing education
+- Formative nursing education
 - Step: {step}
 
 Rules:
 - Do NOT add new medical advice
 - Do NOT contradict the feedback
 - Do NOT change meaning
-- Be encouraging and clear
-- Keep explanations concise
-- Output ONLY valid JSON
+- Be supportive and professional
+- Keep the paragraph concise
+- Output RAW JSON only
+- Do NOT include markdown or extra text
+
+Required JSON format:
+{{
+  "speaker": "system",
+  "message_text": "..."
+}}
 """
 
     def _build_user_prompt(self, raw_feedback: List[Dict[str, Any]]) -> str:
@@ -74,49 +70,40 @@ Raw backend feedback (JSON list):
 
 {json.dumps(raw_feedback, indent=2)}
 
-Rewrite this feedback into narrated student-facing feedback.
-
-Required JSON output format:
-[
-  {{
-    "speaker": "system",
-    "message_text": "...",
-    "category": "communication | knowledge | clinical",
-    "severity": "positive | neutral | corrective",
-    "sequence_index": 0
-  }}
-]
+Combine this feedback into ONE paragraph that:
+- Mentions strengths first (if any)
+- Then mentions areas for improvement (if any)
+- Ends with an encouraging closing sentence
 """
 
     # --------------------------------------------------
-    # Output parsing
+    # Output parsing with safe fallback
     # --------------------------------------------------
 
     def _parse_output(
         self,
         output_text: str,
+        raw_feedback: List[Dict[str, Any]],
         step: str
-    ) -> List[NarratedFeedbackItem]:
+    ) -> NarratedFeedback:
 
         try:
             parsed = json.loads(output_text)
 
-            narrated_items: List[NarratedFeedbackItem] = []
+            return NarratedFeedback(
+                speaker=parsed.get("speaker", "system"),
+                step=step,
+                message_text=parsed["message_text"]
+            )
 
-            for idx, item in enumerate(parsed):
-                narrated_items.append(
-                    NarratedFeedbackItem(
-                        speaker=item["speaker"],
-                        message_text=item["message_text"],
-                        category=item["category"],
-                        severity=item["severity"],
-                        step=step,
-                        sequence_index=item.get("sequence_index", idx)
-                    )
-                )
+        except Exception:
+            # Fallback: concatenate raw feedback texts
+            combined_text = " ".join(
+                item.get("text", "") for item in raw_feedback
+            )
 
-            return narrated_items
-
-        except Exception as e:
-            # Fallback: narration failed → return empty narrated list
-            return []
+            return NarratedFeedback(
+                speaker="system",
+                step=step,
+                message_text=combined_text
+            )

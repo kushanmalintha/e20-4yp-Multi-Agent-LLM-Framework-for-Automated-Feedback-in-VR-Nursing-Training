@@ -1,19 +1,14 @@
 STEP_GUIDANCE = {
-    "HISTORY": (
-        "Begin by taking the patient's history. "
-        "Confirm their identity, ask about allergies and pain, "
-        "and explain the wound care procedure."
+    "history": (
+        "In this step, you should talk with the patient and ask questions to obtain their history."
     ),
-    "ASSESSMENT": (
-        "Assess the wound by answering the multiple-choice questions "
-        "related to its condition and signs of infection."
+    "assessment": (
+        "In this step, you should assess the wound by answering the provided multiple-choice questions."
     ),
-    "CLEANING": (
-        "Clean the wound using proper hand hygiene and aseptic technique. "
-        "Be careful to avoid contamination."
+    "cleaning": (
+        "In this step, you are expected to perform the wound cleaning process."
     ),
-    "DRESSING": (
-        "Apply a sterile dressing, secure it properly, "
-        "and provide the patient with care instructions."
+    "dressing": (
+        "In this step, you are expected to perform the wound dressing process."
     )
 }

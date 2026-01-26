@@ -42,7 +42,7 @@ class CommunicationAgent(BaseAgent):
 
         user_prompt = (
             f"CURRENT PROCEDURE STEP: {current_step}\n"
-            f"STUDENT INPUT: {student_input}\n"
+            f"STUDENT CONTEXT INPUT: {student_input}\n"
             f"SCENARIO CONTEXT: {scenario_metadata.get('patient_history', 'N/A')}\n"
             f"RAG CONTEXT: {rag_response}\n"
         )

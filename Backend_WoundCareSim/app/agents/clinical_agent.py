@@ -1,6 +1,6 @@
 import json
 
-from pydantic_core import ValidationError
+from pydantic import ValidationError
 from app.agents.agent_base import BaseAgent
 from app.utils.schema import EvaluatorResponse
 
@@ -45,7 +45,7 @@ class ClinicalAgent(BaseAgent):
 
         user_prompt = (
             f"CURRENT PROCEDURE STEP: {current_step}\n"
-            f"STUDENT INPUT: {student_input}\n"
+            f"STUDENT CONTEXT INPUT: {student_input}\n"
             f"SCENARIO CONTEXT (Wound): {scenario_metadata.get('wound_details', 'N/A')}\n"
             f"CLINICAL EXPECTATIONS:\n"
             f"- CLEANING: hand hygiene, aseptic technique, correct direction\n"

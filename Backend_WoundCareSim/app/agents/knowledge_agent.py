@@ -1,6 +1,6 @@
 import json
 
-from pydantic_core import ValidationError
+from pydantic import ValidationError
 from app.agents.agent_base import BaseAgent
 from app.utils.schema import EvaluatorResponse
 
@@ -44,11 +44,11 @@ class KnowledgeAgent(BaseAgent):
 
         user_prompt = (
             f"CURRENT PROCEDURE STEP: {current_step}\n"
-            f"STUDENT INPUT: {student_input}\n"
+            f"STUDENT CONTEXT INPUT: {student_input}\n"
             f"SCENARIO CONTEXT: {scenario_metadata.get('patient_history', 'N/A')}\n"
             f"KNOWLEDGE EXPECTATIONS:\n"
-            f"- HISTORY: signs of infection, allergies, pain assessment\n"
-            f"- CLEANING: sterile principles vs clean technique\n"
+            f"- Focus on conceptual understanding, not physical execution\n"
+            f"- Do NOT evaluate procedural sequencing\n"
             f"REFERENCE GUIDELINES: {rag_response}\n"
         )
 

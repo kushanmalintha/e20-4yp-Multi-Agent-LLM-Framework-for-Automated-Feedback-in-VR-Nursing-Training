@@ -104,8 +104,7 @@ class EvaluationService:
             raise ValueError("Session not found")
 
         # ---- Convert step string → enum ----
-        step_str = evaluator_outputs[0].step.lower()
-        current_step = Step(step_str)
+        current_step = Step(session["current_step"])
 
         # ---- Coordinator aggregation (NUMERIC ONLY) ----
         coordinator_output = self.coordinator.aggregate(
@@ -193,7 +192,7 @@ class EvaluationService:
                 Feedback(
                     text=staff_nurse_text,
                     speaker="staff_nurse",
-                    category="clinical",
+                    category="guidance",
                     timing="post_step"
                 ).to_dict()
             )
@@ -219,7 +218,6 @@ class EvaluationService:
         payload = {
             "step": current_step.value,
             "scores": coordinator_output.get("scores"),
-            "readiness": coordinator_output.get("readiness"),
             "raw_feedback": raw_feedback_items,
             "narrated_feedback": narrated_feedback,
         }
