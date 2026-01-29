@@ -16,5 +16,5 @@ def upload_scenario(json_path: Path):
 
 
 if __name__ == "__main__":
-    json_file = BASE_DIR / "data" / "scenario_week6_mock.json"
+    json_file = BASE_DIR / "data" / "scenario.json"
     upload_scenario(json_file)
