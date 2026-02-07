@@ -1,141 +1,45 @@
 HISTORY TAKING GUIDELINES
 Post-Operative Wound Care
 
-PURPOSE
+ESSENTIAL CONVERSATION ELEMENTS
 
-To gather essential patient information before performing wound care in order to ensure patient safety, correct clinical decisions, and effective communication.
+1. INTRODUCTION & IDENTITY VERIFICATION
+- Introduce yourself as a nursing student
+- Ask patient's name, age, and address
+- Purpose: Prevent wrong-patient errors, establish rapport
 
-1. INTRODUCTION & PATIENT IDENTIFICATION (MANDATORY)
+2. ALLERGY ASSESSMENT (CRITICAL)
+- Ask about medication allergies
+- Ask about dressing/tape/latex allergies
+- Purpose: Prevent allergic reactions, guide material selection
 
-The student must introduce themselves and verify patient identity before any procedure.
+3. PAIN ASSESSMENT
+- Ask if patient has pain at wound site
+- Ask about pain severity (scale 0-10 or mild/moderate/severe)
+- Purpose: Ensure comfort, identify potential complications
 
-Required Questions:
+4. MEDICAL HISTORY
+- Ask about current medical conditions
+- Ask about recent surgery/procedure
+- Purpose: Understand wound context and risk factors
 
-“Good morning, I am a nursing student…”
+5. PROCEDURE EXPLANATION
+- Explain what you will do (assess, clean, dress the wound)
+- Explain why it's needed (prevent infection, promote healing)
+- Use simple, non-technical language
+- Purpose: Reduce anxiety, gain cooperation
 
-“May I know your name, please?”
+6. PATIENT COMFORT
+- Ask if patient needs anything before starting
+- Check if patient is comfortable
+- Purpose: Prevent interruptions, demonstrate patient-centered care
 
-“Your age, please?”
+COMMUNICATION PRINCIPLES
+- Speak clearly and respectfully
+- Listen actively to patient responses
+- Do not rush or assume information
+- Base all clinical decisions on information gathered
 
-“Your address, please?”
-
-Why This Is Important:
-
-Prevents treating the wrong patient
-
-Establishes professional rapport
-
-Required for legal and clinical documentation
-
-2. PROCEDURE EXPLANATION & COMMUNICATION
-
-The student should clearly explain:
-
-What procedure will be performed
-
-Why it is needed
-
-Use simple, non-technical language
-
-Example:
-
-“The doctor has prescribed cleaning your wound and applying a dressing to help it heal.”
-
-Why This Is Important:
-
-Reduces patient anxiety
-
-Improves cooperation and trust
-
-3. ALLERGY ASSESSMENT (CRITICAL SAFETY STEP)
-
-The student must ask about allergies before wound care.
-
-Required Question:
-
-“Do you have any history of allergy to medications or plasters?”
-
-What to Identify:
-
-Medication allergies (e.g., penicillin)
-
-Dressing, tape, or latex allergies
-
-Why This Is Important:
-
-Prevents allergic reactions
-
-Directly affects dressing and solution choice
-
-4. PAIN ASSESSMENT
-
-Pain should be assessed before starting the procedure.
-
-Required Question:
-
-“Do you feel any pain at the wound site?”
-
-Expected Information:
-
-Pain presence
-
-Pain severity (mild, moderate, severe)
-
-Why This Is Important:
-
-Ensures patient comfort
-
-Severe pain may indicate complications
-
-5. BASIC NEEDS ASSESSMENT
-
-The student should ensure the patient is comfortable before beginning.
-
-Required Question:
-
-“Do you need to go to the bathroom or is there anything you need before we start?”
-
-Why This Is Important:
-
-Prevents interruption during procedure
-
-Demonstrates patient-centered care
-
-6. PROFESSIONAL COMMUNICATION PRINCIPLES
-DO:
-
-✔ Introduce yourself
-✔ Speak clearly and politely
-✔ Explain each step
-✔ Ask if the patient is comfortable
-
-DO NOT:
-
-✘ Rush the patient
-✘ Assume information
-✘ Ignore patient concerns
-
-7. SUMMARY CHECKLIST (EVALUATION BASIS)
-
-Before proceeding, the student should have:
-
-☑ Introduced themselves
-☑ Verified patient identity
-☑ Explained the procedure
-☑ Asked about allergies
-☑ Assessed pain
-☑ Checked basic needs
-
-Failure to complete these steps should be flagged by evaluator agents.
-
-KEY PRINCIPLES
-
-Patient safety comes first
-
-Clear communication improves care quality
-
-All findings must be based on patient responses
-
-If it is not asked, it is considered not done
-
-END OF GUIDELINES
+EVALUATION BASIS
+If the student does not ask about something, it is considered not done.
+Patient safety requires complete information gathering.

@@ -6,7 +6,8 @@ from app.utils.schema import EvaluatorResponse
 
 class KnowledgeAgent(BaseAgent):
     """
-    Evaluates the student's nursing knowledge and clinical reasoning.
+    Evaluates the student's clinical knowledge and information gathering during history taking.
+    Focuses on: completeness of history, appropriate questions, clinical reasoning.
     """
 
     def __init__(self):
@@ -20,12 +21,10 @@ class KnowledgeAgent(BaseAgent):
         rag_response: str,
     ) -> EvaluatorResponse:
         """
-        Evaluate nursing knowledge and return a structured object.
+        Evaluate clinical knowledge and information gathering completeness.
         """
 
         # CRITICAL: Check for empty input first
-        # For HISTORY step, empty input means no conversation
-        # For ASSESSMENT step, this check won't trigger (MCQ logic is separate)
         if current_step == "history" and (not student_input or student_input.strip() == ""):
             return EvaluatorResponse(
                 agent_name="KnowledgeAgent",
@@ -34,42 +33,83 @@ class KnowledgeAgent(BaseAgent):
                 issues_detected=[
                     "No patient history obtained",
                     "Failed to gather critical medical information",
-                    "Cannot assess without patient data"
+                    "Cannot assess patient safety without complete history"
                 ],
-                explanation="The student did not gather any patient history. Understanding the patient's medical background, allergies, current medications, and surgical history is essential for safe wound care. Without this knowledge, the student cannot make informed clinical decisions.",
+                explanation="The student did not gather any patient history. Understanding the patient's medical background, allergies, current medications, pain level, and surgical history is essential for safe wound care. Without this knowledge, the student cannot make informed clinical decisions or ensure patient safety.",
                 verdict="Inappropriate",
                 confidence=1.0
             )
 
         system_prompt = (
-            "You are a nursing knowledge evaluator.\n"
-            "Your task is to evaluate ONLY the student's nursing knowledge and reasoning.\n\n"
-            "You MUST respond with valid JSON matching this structure:\n"
+            "You are a nursing clinical knowledge evaluator for history-taking.\n\n"
+            "ROLE: Evaluate ONLY the completeness and appropriateness of information gathered, NOT communication style.\n\n"
+            "ESSENTIAL INFORMATION TO ASSESS:\n"
+            "1. Patient Identity Verification\n"
+            "   - Name, age, address\n"
+            "   - Why critical: Prevents wrong-patient errors\n\n"
+            "2. Allergy Assessment (HIGHEST PRIORITY)\n"
+            "   - Medication allergies\n"
+            "   - Dressing/tape/latex allergies\n"
+            "   - Why critical: Prevents life-threatening reactions, guides material selection\n\n"
+            "3. Pain Assessment\n"
+            "   - Presence of pain\n"
+            "   - Pain severity/description\n"
+            "   - Why critical: Ensures comfort, identifies complications\n\n"
+            "4. Medical History\n"
+            "   - Current medical conditions\n"
+            "   - Recent surgery/procedure details\n"
+            "   - Current medications\n"
+            "   - Why critical: Identifies risk factors, informs treatment decisions\n\n"
+            "5. Procedure Explanation\n"
+            "   - What will be done (assess, clean, dress wound)\n"
+            "   - Why it's needed\n"
+            "   - Why critical: Informed consent, patient cooperation\n\n"
+            "6. Patient Comfort Check\n"
+            "   - Basic needs before starting\n"
+            "   - Why critical: Prevents interruptions, shows patient-centered care\n\n"
+            "EVALUATION RULES:\n"
+            "- Base evaluation ONLY on the actual conversation transcript\n"
+            "- If information was not asked about, it is NOT gathered (even if scenario contains it)\n"
+            "- Do NOT evaluate communication style (tone, politeness) - that's for CommunicationAgent\n"
+            "- Do NOT evaluate physical execution - that's for ClinicalAgent\n"
+            "- Do NOT assume or invent student actions\n"
+            "- Missing allergy assessment is ALWAYS a critical safety issue\n"
+            "- Missing pain assessment is a significant gap\n"
+            "- Missing identity verification is a safety concern\n\n"
+            "OUTPUT FORMAT (RAW JSON ONLY):\n"
             "{\n"
             '  "agent_name": "KnowledgeAgent",\n'
-            '  "step": "Current Step Name",\n'
-            '  "strengths": ["List of correct knowledge demonstrated..."],\n'
-            '  "issues_detected": ["List of knowledge gaps or errors..."],\n'
-            '  "explanation": "Why this knowledge matters clinically...",\n'
+            '  "step": "history",\n'
+            '  "strengths": ["Specific information correctly gathered with examples..."],\n'
+            '  "issues_detected": ["Specific information gaps with clinical impact..."],\n'
+            '  "explanation": "Assessment of information gathering completeness and clinical reasoning...",\n'
             '  "verdict": "Appropriate" | "Partially Appropriate" | "Inappropriate",\n'
-            '  "confidence": 0.0 to 1.0\n'
+            '  "confidence": 0.9\n'
             "}\n\n"
-            "Strict Rules:\n"
-            "- Output RAW JSON only. No markdown formatting.\n"
-            "- Do NOT evaluate physical execution (clinical skills).\n"
-            "- Do NOT evaluate politeness (communication).\n"
-            "- Base evaluation ONLY on the actual student input provided.\n"
-            "- Do NOT assume or invent student knowledge.\n"
+            "VERDICT GUIDELINES:\n"
+            "- Appropriate: All essential information gathered (identity, allergies, pain, medical history, procedure explained)\n"
+            "- Partially Appropriate: Some essential information gathered but missing critical elements (e.g., allergies, pain)\n"
+            "- Inappropriate: Multiple critical information gaps OR failed to gather allergy information\n"
         )
 
         user_prompt = (
-            f"CURRENT PROCEDURE STEP: {current_step}\n"
-            f"STUDENT CONTEXT INPUT: {student_input}\n"
-            f"SCENARIO CONTEXT: {scenario_metadata.get('patient_history', 'N/A')}\n"
-            f"KNOWLEDGE EXPECTATIONS:\n"
-            f"- Focus on conceptual understanding, not physical execution\n"
-            f"- Do NOT evaluate procedural sequencing\n"
-            f"REFERENCE GUIDELINES: {rag_response}\n"
+            f"CONVERSATION TRANSCRIPT:\n"
+            f"{student_input}\n\n"
+            f"AVAILABLE PATIENT INFORMATION (for comparison):\n"
+            f"Name: {scenario_metadata.get('patient_history', {}).get('name', 'Unknown')}\n"
+            f"Age: {scenario_metadata.get('patient_history', {}).get('age', 'Unknown')}\n"
+            f"Address: {scenario_metadata.get('patient_history', {}).get('address', 'Unknown')}\n"
+            f"Medical History: {', '.join(scenario_metadata.get('patient_history', {}).get('medical_history', [])) or 'None'}\n"
+            f"Allergies: {', '.join(scenario_metadata.get('patient_history', {}).get('allergies', [])) or 'None'}\n"
+            f"Current Medications: {', '.join(scenario_metadata.get('patient_history', {}).get('current_medications', [])) or 'None'}\n"
+            f"Surgery: {scenario_metadata.get('patient_history', {}).get('surgery_details', {}).get('procedure', 'Unknown')}\n"
+            f"Pain Level: {scenario_metadata.get('patient_history', {}).get('pain_level', {}).get('description', 'Unknown')}\n"
+            f"Wound Type: {scenario_metadata.get('wound_details', {}).get('wound_type', 'Unknown')}\n"
+            f"Wound Location: {scenario_metadata.get('wound_details', {}).get('location', 'Unknown')}\n\n"
+            f"REFERENCE GUIDELINES:\n"
+            f"{rag_response}\n\n"
+            "Evaluate what information the student actually gathered from the conversation.\n"
+            "Remember: If the student didn't ask about it, they didn't gather it."
         )
 
         raw_response = await self.run(
@@ -87,9 +127,8 @@ class KnowledgeAgent(BaseAgent):
 
             return EvaluatorResponse(**response_data)
 
-        # UPDATED EXCEPT BLOCK: Catch ValidationError
         except (json.JSONDecodeError, ValueError, ValidationError) as e:
-            print(f"Agent Parsing Failed: {e}")
+            print(f"KnowledgeAgent Parsing Failed: {e}")
             return EvaluatorResponse(
                 agent_name="KnowledgeAgent",
                 step=current_step,

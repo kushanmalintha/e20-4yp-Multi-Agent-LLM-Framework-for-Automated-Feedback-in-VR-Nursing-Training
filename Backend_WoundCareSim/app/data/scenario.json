@@ -23,19 +23,23 @@
     "surgery_details": {
       "procedure": "Open reduction and internal fixation of left forearm fracture",
       "date": "2025-01-10",
-      "surgeon": "Dr. K. Fernando"
+      "surgeon": "Dr. K. Fernando",
+      "reason": "Fractured left forearm from a fall"
     },
 
     "pain_level": {
       "description": "Mild pain at the surgical site",
-      "pain_score": 2
+      "pain_score": 2,
+      "pain_characteristics": "Dull, achy pain that worsens with movement"
     }
   },
 
   "wound_details": {
     "location": "Left forearm",
     "wound_type": "Clean surgical wound",
-    "appearance": "Sutured incision with no visible discharge"
+    "appearance": "Sutured incision with no visible discharge",
+    "size": "Approximately 8 cm linear incision",
+    "wound_age": "5 days post-operative"
   },
 
   "assessment_questions": [
@@ -101,8 +105,38 @@
     }
   ],
 
+  "clinical_context": {
+    "admission_date": "2025-01-10",
+    "current_date": "2025-01-15",
+    "days_post_op": 5,
+    "vital_signs": {
+      "blood_pressure": "138/85 mmHg",
+      "heart_rate": "78 bpm",
+      "temperature": "37.1°C",
+      "respiratory_rate": "16 breaths/min"
+    },
+    "patient_status": "Stable, oriented, cooperative"
+  },
+
+  "expected_history_elements": {
+    "mandatory": [
+      "Patient identity verification (name, age)",
+      "Allergy assessment",
+      "Pain assessment",
+      "Medical history",
+      "Procedure explanation"
+    ],
+    "optional": [
+      "Address verification",
+      "Comfort needs check",
+      "Social history",
+      "Medication review"
+    ]
+  },
+
   "vector_store_namespace": "scenario_001",
 
   "created_by": "system",
-  "created_at": "2025-01-20T10:00:00Z"
+  "created_at": "2025-01-20T10:00:00Z",
+  "updated_at": "2025-02-07T18:30:00Z"
 }
