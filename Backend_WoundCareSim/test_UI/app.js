@@ -204,6 +204,20 @@ async function sendMessageText(message) {
     }
 }
 
+async function sendPatientMessage() {
+    const input = document.getElementById('patientQuestion');
+    if (!input) return;
+    
+    const message = input.value.trim();
+    if (!message) return;
+    
+    // Send the message
+    await sendMessageText(message);
+    
+    // Clear the input
+    input.value = '';
+}
+
 async function togglePatientRecording() {
     if (isRecording) {
         stopRecording();

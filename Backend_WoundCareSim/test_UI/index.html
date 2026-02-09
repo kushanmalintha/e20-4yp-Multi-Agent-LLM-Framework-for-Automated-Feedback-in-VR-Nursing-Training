@@ -89,9 +89,12 @@
                         <input 
                             type="text" 
                             id="patientQuestion" 
-                            placeholder="Transcribed question will appear here..."
-                            readonly
+                            placeholder="Type your question to the patient..."
+                            onkeypress="handleEnter(event, sendPatientMessage)"
                         >
+                        <button class="btn btn-secondary" onclick="sendPatientMessage()">
+                            Send
+                        </button>
                     </div>
                 </div>
 
