@@ -7,7 +7,6 @@ from app.api.websocket_routes import router as websocket_router
 
 app = FastAPI(
     title="VR Nursing Education System Backend",
-    version="Week-9"
 )
 
 # CORS Configuration for Test UI
