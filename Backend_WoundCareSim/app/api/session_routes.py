@@ -201,18 +201,10 @@ async def send_message(payload: MessageInput):
 @router.post("/staff-nurse")
 async def ask_staff_nurse(payload: StaffNurseInput):
     """
-    Ask the staff nurse for guidance OR verification (auto-detected).
-    
-    NEW BEHAVIOR (Issue #2 Fix):
-    - The nurse automatically detects if student is requesting verification
-    - If verification detected: Records as action + provides verification response
-    - If general question: Provides guidance only (no action recorded)
-    
-    This mimics real VR interaction where speaking to nurse triggers appropriate response.
-    
-    Detection keywords for verification:
-    - "verify", "check", "confirm", "is this correct"
-    - Mentions of "solution", "dressing", "bottle", "packet", "expires", "expiry"
+    Ask the staff nurse for guidance via REST fallback.
+
+    Verification in cleaning_and_dressing is handled via WebSocket nurse_message
+    to keep a single real-time flow for action recording.
     """
     session = session_manager.get_session(payload.session_id)
     if not session:
@@ -220,16 +212,8 @@ async def ask_staff_nurse(payload: StaffNurseInput):
     
     current_step = session["current_step"]
     
-    # ⭐ NEW: Auto-detect verification request
-    is_verification, material_type = _detect_verification_request(payload.message)
-    
-    if is_verification and current_step == Step.CLEANING_AND_DRESSING.value:
-        # This is a verification request - handle as action
-        return await _handle_verification_as_action(
-            session=session,
-            student_message=payload.message,
-            material_type=material_type
-        )
+    # Verification requests for cleaning/dressing are handled via WebSocket nurse_message only.
+    # Keep REST endpoint for general guidance and non-cleaning steps.
     
     # Regular guidance request
     # Determine next step

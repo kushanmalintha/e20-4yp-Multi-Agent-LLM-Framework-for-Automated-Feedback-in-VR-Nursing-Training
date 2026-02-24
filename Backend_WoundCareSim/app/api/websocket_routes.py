@@ -182,6 +182,51 @@ async def websocket_endpoint(session_id: str, websocket: WebSocket):
                     await _send_server_event(websocket, "nurse_message", {"text": response, "role": "nurse"})
                     await _send_tts_event(websocket, await _safe_tts(response, role="staff_nurse"), "nurse")
 
+            elif event == "nurse_message":
+                student_message = (data.get("text") or "").strip()
+                if not student_message:
+                    await _send_error(websocket, "Nurse message text is required")
+                    continue
+
+                current_step = session.get("current_step")
+                if current_step == Step.CLEANING_AND_DRESSING.value:
+                    is_verification, material_type = _detect_verification_request(student_message)
+                    if is_verification:
+                        response = await _handle_verification_as_action(
+                            session=session,
+                            student_message=student_message,
+                            material_type=material_type,
+                        )
+                        await _send_server_event(
+                            websocket,
+                            "nurse_message",
+                            {"text": response.get("staff_nurse_response", ""), "role": "nurse"},
+                        )
+                        await _send_tts_event(websocket, response.get("staff_nurse_audio"), "nurse")
+                        feedback_payload = response.get("feedback") or {}
+                        if not feedback_payload.get("message"):
+                            feedback_payload["message"] = response.get("staff_nurse_response", "")
+                        feedback_payload.update(
+                            {
+                                "is_verification": True,
+                                "action_recorded": response.get("action_recorded", False),
+                                "action_type": response.get("action_type"),
+                                "already_performed": response.get("already_performed", False),
+                            }
+                        )
+                        await _send_server_event(websocket, "real_time_feedback", feedback_payload)
+                        await _send_tts_event(websocket, response.get("feedback_audio"), "feedback")
+                        continue
+
+                staff_nurse = StaffNurseAgent()
+                response = await staff_nurse.respond(
+                    student_input=student_message,
+                    current_step=current_step,
+                    next_step=None,
+                )
+                await _send_server_event(websocket, "nurse_message", {"text": response, "role": "nurse"})
+                await _send_tts_event(websocket, await _safe_tts(response, role="staff_nurse"), "nurse")
+
             elif event == "verification_request":
                 student_message = (data.get("text") or "").strip()
                 if not student_message:
@@ -316,6 +361,8 @@ async def websocket_endpoint(session_id: str, websocket: WebSocket):
                         await _safe_tts(narrated_text, role="feedback"),
                         "feedback",
                     )
+                    session["pending_step_transition_confirmation"] = True
+                    continue
 
                 elif current_step == Step.ASSESSMENT.value:
                     mcq_answers = session.get("mcq_answers", data.get("student_mcq_answers") or {})
@@ -354,6 +401,30 @@ async def websocket_endpoint(session_id: str, websocket: WebSocket):
                     session["action_events"] = []
                     session.pop("cached_rag_guidelines", None)
 
+                next_step = session_manager.advance_step(session_id)
+
+                if next_step == Step.CLEANING_AND_DRESSING.value:
+                    rag_result = await retrieve_with_rag(
+                        query="wound cleaning and dressing preparation steps sequence prerequisites required actions",
+                        scenario_id=session["scenario_id"],
+                    )
+                    session["cached_rag_guidelines"] = rag_result.get("text", "")
+
+                await _send_server_event(websocket, "step_complete", {"next_step": next_step})
+                if next_step == Step.COMPLETED.value:
+                    await _send_server_event(websocket, "session_end", {"session_id": session_id})
+
+            elif event == "confirm_step_transition":
+                current_step = session.get("current_step")
+                if current_step != Step.HISTORY.value:
+                    await _send_error(websocket, "Transition confirmation is only valid for history")
+                    continue
+
+                if not session.get("pending_step_transition_confirmation"):
+                    await _send_error(websocket, "No pending history transition to confirm")
+                    continue
+
+                session["pending_step_transition_confirmation"] = False
                 next_step = session_manager.advance_step(session_id)
 
                 if next_step == Step.CLEANING_AND_DRESSING.value:

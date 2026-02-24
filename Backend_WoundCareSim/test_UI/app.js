@@ -155,6 +155,10 @@ function markFeedbackRendered() {
     if (!currentSession.awaitingStepCompletion) return;
 
     currentSession.feedbackRenderedForPendingStep = true;
+    if (currentSession.currentStep === 'history') {
+        return;
+    }
+
     if (currentSession.deferredNextStep) {
         const nextStep = currentSession.deferredNextStep;
         currentSession.awaitingStepCompletion = false;
@@ -184,7 +188,7 @@ function handleTranscription(data) {
 }
 
 function playAudio(base64Audio) {
-    if (!base64Audio) return;
+    if (!base64Audio) return Promise.resolve();
     const byteCharacters = atob(base64Audio);
     const byteNumbers = new Array(byteCharacters.length);
 
@@ -197,10 +201,15 @@ function playAudio(base64Audio) {
     const audioUrl = URL.createObjectURL(blob);
 
     const audio = new Audio(audioUrl);
-    audio.play().catch((error) => {
-        console.error('WebSocket audio playback failed:', error);
-    }).finally(() => {
-        setTimeout(() => URL.revokeObjectURL(audioUrl), 1000);
+    return new Promise(resolve => {
+        audio.onended = resolve;
+        audio.onerror = resolve;
+        audio.play().catch((error) => {
+            console.error('WebSocket audio playback failed:', error);
+            resolve();
+        }).finally(() => {
+            setTimeout(() => URL.revokeObjectURL(audioUrl), 1000);
+        });
     });
 }
 
@@ -231,7 +240,7 @@ function handleServerEvent(message) {
             handleTranscription(message.data || {});
             break;
         case 'tts_audio':
-            playAudio((message.data || {}).audio_bytes);
+            enqueueWebSocketAudio((message.data || {}).audio_bytes);
             break;
         case 'real_time_feedback':
             displayRealtimeFeedback(message.data || {});
@@ -925,7 +934,10 @@ async function askStaffNurse(messageOverride) {
     
     try {
         if (canUseWebSocket() && currentSession.currentStep !== 'history') {
-            const sent = sendWsEvent('text_message', { text: message });
+            const sentEvent = currentSession.currentStep === 'cleaning_and_dressing'
+                ? 'nurse_message'
+                : 'text_message';
+            const sent = sendWsEvent(sentEvent, { text: message });
             if (sent) {
                 input.value = '';
                 return;
@@ -1153,6 +1165,13 @@ function closeFeedbackModal() {
 }
 
 function continueToNextStep() {
+    if (canUseWebSocket() && currentSession.currentStep === 'history' && currentSession.awaitingStepCompletion) {
+        const sent = sendWsEvent('confirm_step_transition');
+        if (sent) {
+            return;
+        }
+    }
+
     closeFeedbackModal();
     
     // Navigate to next step
@@ -1169,6 +1188,13 @@ function continueToNextStep() {
         default:
             console.error('Unknown next step:', currentSession.nextStep);
     }
+}
+
+let wsAudioQueue = Promise.resolve();
+
+function enqueueWebSocketAudio(base64Audio) {
+    wsAudioQueue = wsAudioQueue.then(() => playAudio(base64Audio));
+    return wsAudioQueue;
 }
 
 // ==========================================
