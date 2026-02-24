@@ -15,7 +15,10 @@ let currentSession = {
     ws: null,
     wsConnected: false,
     lastSentEvent: '-',
-    lastReceivedEvent: '-'
+    lastReceivedEvent: '-',
+    awaitingStepCompletion: false,
+    feedbackRenderedForPendingStep: false,
+    deferredNextStep: null
 };
 
 let mediaRecorder = null;
@@ -148,6 +151,19 @@ function moveToNextStep(nextStep) {
     continueToNextStep();
 }
 
+function markFeedbackRendered() {
+    if (!currentSession.awaitingStepCompletion) return;
+
+    currentSession.feedbackRenderedForPendingStep = true;
+    if (currentSession.deferredNextStep) {
+        const nextStep = currentSession.deferredNextStep;
+        currentSession.awaitingStepCompletion = false;
+        currentSession.feedbackRenderedForPendingStep = false;
+        currentSession.deferredNextStep = null;
+        moveToNextStep(nextStep);
+    }
+}
+
 function handleTranscription(data) {
     const transcript = (data.text || '').trim();
     if (!transcript) return;
@@ -230,9 +246,38 @@ function handleServerEvent(message) {
                 }
             }
             break;
-        case 'step_complete':
-            moveToNextStep((message.data || {}).next_step);
+        case 'final_feedback':
+            displayHistoryFeedback(message.data || {}, null);
+            markFeedbackRendered();
             break;
+        case 'assessment_summary':
+            displayAssessmentResults(
+                (message.data || {}).mcq_result,
+                null,
+                (message.data || {}).summary_text
+            );
+            markFeedbackRendered();
+            break;
+        case 'step_complete': {
+            const nextStep = (message.data || {}).next_step;
+            if (!currentSession.awaitingStepCompletion) {
+                moveToNextStep(nextStep);
+                break;
+            }
+
+            const pendingStep = currentSession.currentStep;
+            const requiresFeedback = pendingStep === 'history' || pendingStep === 'assessment';
+            if (requiresFeedback && !currentSession.feedbackRenderedForPendingStep) {
+                currentSession.deferredNextStep = nextStep;
+                break;
+            }
+
+            currentSession.awaitingStepCompletion = false;
+            currentSession.feedbackRenderedForPendingStep = false;
+            currentSession.deferredNextStep = null;
+            moveToNextStep(nextStep);
+            break;
+        }
         case 'session_end':
             showCompletionScreen();
             break;
@@ -963,8 +1008,13 @@ async function askStaffNurse(messageOverride) {
 async function finishStep(step) {
     try {
         if (canUseWebSocket()) {
+            currentSession.awaitingStepCompletion = true;
+            currentSession.feedbackRenderedForPendingStep = step === 'cleaning_and_dressing';
             const sent = sendWsEvent('step_complete', { step });
             if (sent) return;
+            currentSession.awaitingStepCompletion = false;
+            currentSession.feedbackRenderedForPendingStep = false;
+            currentSession.deferredNextStep = null;
         }
 
         const response = await apiCall('/session/step', 'POST', {
@@ -1035,10 +1085,12 @@ function displayHistoryFeedback(feedback, feedbackAudio) {
     }
 }
 
-function displayAssessmentResults(mcqResult, summaryAudio) {
+function displayAssessmentResults(mcqResult, summaryAudio, summaryText = null) {
     const modal = document.getElementById('feedbackModal');
     const content = document.getElementById('feedbackContent');
     
+    if (!mcqResult) return;
+
     const scorePercent = (mcqResult.score * 100).toFixed(0);
     
     let html = `
@@ -1049,7 +1101,7 @@ function displayAssessmentResults(mcqResult, summaryAudio) {
                     ${mcqResult.correct_count} / ${mcqResult.total_questions}
                 </div>
                 <div class="mcq-summary-text">
-                    ${mcqResult.summary}
+                    ${summaryText || mcqResult.summary}
                 </div>
                 <div class="score-bar">
                     <div class="score-fill" style="width: ${scorePercent}%"></div>
