@@ -14,7 +14,6 @@ let currentSession = {
     sessionToken: null,
     ws: null,
     wsConnected: false,
-    lastSentEvent: '-',
     lastReceivedEvent: '-',
     awaitingStepCompletion: false,
     feedbackRenderedForPendingStep: false,
@@ -131,7 +130,7 @@ function updateDebugPanel() {
 
     statusEl.textContent = currentSession.wsConnected ? 'Connected' : 'Disconnected';
     statusEl.className = currentSession.wsConnected ? 'debug-value connected' : 'debug-value disconnected';
-    sentEl.textContent = currentSession.lastSentEvent || '-';
+    sentEl.textContent = '-';
     receivedEl.textContent = currentSession.lastReceivedEvent || '-';
 }
 
@@ -142,9 +141,6 @@ function getWebSocket() {
     return null;
 }
 
-function canUseWebSocket() {
-    return !!getWebSocket();
-}
 
 function moveToNextStep(nextStep) {
     currentSession.nextStep = nextStep;
@@ -255,6 +251,34 @@ function handleServerEvent(message) {
                 }
             }
             break;
+        case 'mcq_answer_result': {
+            const data = message.data || {};
+            const questionId = data.question_id;
+            if (!questionId) {
+                break;
+            }
+            const statusBadge = document.getElementById(`status-${questionId}`);
+            const feedbackDiv = document.getElementById(`feedback-${questionId}`);
+            const optionsDiv = document.getElementById(`options-${questionId}`);
+            if (statusBadge) {
+                statusBadge.style.display = 'inline-block';
+                statusBadge.className = `mcq-status ${data.status}`;
+                statusBadge.textContent = data.is_correct ? '✓ Correct' : '✗ Incorrect';
+            }
+            if (feedbackDiv) {
+                feedbackDiv.style.display = 'block';
+                feedbackDiv.className = `mcq-feedback ${data.status}`;
+                feedbackDiv.innerHTML = `<strong>Explanation:</strong> ${data.explanation}`;
+            }
+            if (optionsDiv) {
+                optionsDiv.style.pointerEvents = 'none';
+                optionsDiv.style.opacity = '0.6';
+            }
+            if (data.feedback_audio && data.feedback_audio.audio_base64) {
+                playAudioFromBase64(data.feedback_audio.audio_base64, data.feedback_audio.content_type);
+            }
+            break;
+        }
         case 'final_feedback':
             displayHistoryFeedback(message.data || {}, null);
             markFeedbackRendered();
@@ -305,7 +329,6 @@ function sendWsEvent(event, data) {
         data: data || {}
     };
     ws.send(JSON.stringify(payload));
-    currentSession.lastSentEvent = event;
     updateDebugPanel();
     return true;
 }
@@ -432,28 +455,10 @@ async function sendMessageText(message) {
 
     try {
         addMessageToConversation('student', message);
-
-        if (canUseWebSocket()) {
-            const sent = sendWsEvent('text_message', { text: message });
-            if (sent) {
-                return;
-            }
+        const sent = sendWsEvent('text_message', { text: message });
+        if (!sent) {
+            showError('WebSocket is disconnected. Please reconnect and try again.');
         }
-
-        const response = await apiCall('/session/message', 'POST', {
-            session_id: currentSession.sessionId,
-            message: message
-        });
-
-        addMessageToConversation('patient', response.patient_response);
-
-        if (response.patient_audio && response.patient_audio.audio_base64) {
-            playAudioFromBase64(
-                response.patient_audio.audio_base64,
-                response.patient_audio.content_type
-            );
-        }
-
     } catch (error) {
         console.error('Failed to send message:', error);
     }
@@ -589,7 +594,7 @@ function stopRecording() {
 async function sendAudioForTranscription(audioBlob, onTranscript) {
     showLoading();
     try {
-        if (canUseWebSocket()) {
+        if (getWebSocket()) {
             const base64Audio = await blobToBase64(audioBlob);
             pendingTranscriptionHandler = onTranscript || null;
             sendWsEvent('stt_chunk', {
@@ -701,46 +706,13 @@ function loadMCQQuestions() {
 
 async function selectMCQOption(questionId, answer) {
     try {
-        if (canUseWebSocket()) {
-            sendWsEvent('mcq_answer', {
-                question_id: questionId,
-                answer: answer
-            });
-        }
-
-        // Submit answer
-        const response = await apiCall('/session/mcq-answer', 'POST', {
-            session_id: currentSession.sessionId,
+        const sent = sendWsEvent('mcq_answer', {
             question_id: questionId,
             answer: answer
         });
-        
-        // Update UI with immediate feedback
-        const statusBadge = document.getElementById(`status-${questionId}`);
-        const feedbackDiv = document.getElementById(`feedback-${questionId}`);
-        const optionsDiv = document.getElementById(`options-${questionId}`);
-        
-        // Show status
-        statusBadge.style.display = 'inline-block';
-        statusBadge.className = `mcq-status ${response.status}`;
-        statusBadge.textContent = response.is_correct ? '✓ Correct' : '✗ Incorrect';
-        
-        // Show explanation
-        feedbackDiv.style.display = 'block';
-        feedbackDiv.className = `mcq-feedback ${response.status}`;
-        feedbackDiv.innerHTML = `<strong>Explanation:</strong> ${response.explanation}`;
-        
-        // Disable options
-        optionsDiv.style.pointerEvents = 'none';
-        optionsDiv.style.opacity = '0.6';
-
-        if (response.feedback_audio && response.feedback_audio.audio_base64) {
-            playAudioFromBase64(
-                response.feedback_audio.audio_base64,
-                response.feedback_audio.content_type
-            );
+        if (!sent) {
+            showError('WebSocket is disconnected. Please reconnect and try again.');
         }
-        
     } catch (error) {
         console.error('Failed to submit MCQ answer:', error);
     }
@@ -798,39 +770,12 @@ function loadCleaningAndDressingActions() {
 
 async function recordAction(actionType) {
     try {
-        if (canUseWebSocket()) {
-            const sent = sendWsEvent('action_performed', {
-                action_type: actionType
-            });
-            if (sent) return;
-        }
-
-        const response = await apiCall('/session/action', 'POST', {
-            session_id: currentSession.sessionId,
+        const sent = sendWsEvent('action_performed', {
             action_type: actionType
         });
-        
-        // ⭐ FIX #1: Handle duplicate actions
-        if (response.already_performed) {
-            // Show duplicate action notification
-            displayRealtimeFeedback({
-                message: response.feedback.message,
-                status: 'duplicate',
-                can_proceed: true,
-                missing_actions: []
-            }, response.feedback_audio);
-            return; // Don't increment counter or update UI
+        if (!sent) {
+            showError('WebSocket is disconnected. Please reconnect and try again.');
         }
-        
-        // Update counter (only if action was actually recorded)
-        if (response.action_recorded) {
-            currentSession.actionCounter++;
-            document.getElementById('actionCounter').textContent = currentSession.actionCounter;
-        }
-        
-        // Display real-time feedback
-        displayRealtimeFeedback(response.feedback, response.feedback_audio);
-        
     } catch (error) {
         console.error('Failed to record action:', error);
     }
@@ -925,89 +870,23 @@ function getStaffNurseRecordingIds() {
 
 async function askStaffNurse(messageOverride) {
     const inputId = getStaffNurseInputId();
-    const responseId = getStaffNurseResponseId();
-    
+
     const input = document.getElementById(inputId);
     const message = messageOverride ? messageOverride.trim() : input.value.trim();
-    
+
     if (!message) return;
-    
+
     try {
-        if (canUseWebSocket() && currentSession.currentStep !== 'history') {
-            const sentEvent = currentSession.currentStep === 'cleaning_and_dressing'
-                ? 'nurse_message'
-                : 'text_message';
-            const sent = sendWsEvent(sentEvent, { text: message });
-            if (sent) {
-                input.value = '';
-                return;
-            }
+        const sentEvent = currentSession.currentStep === 'cleaning_and_dressing'
+            ? 'nurse_message'
+            : 'text_message';
+        const sent = sendWsEvent(sentEvent, { text: message });
+        if (!sent) {
+            showError('WebSocket is disconnected. Please reconnect and try again.');
+            return;
         }
 
-        const response = await apiCall('/session/staff-nurse', 'POST', {
-            session_id: currentSession.sessionId,
-            message: message
-        });
-        
-        // ⭐ NEW: Handle auto-detected verification
-        const responseDiv = document.getElementById(responseId);
-        
-        if (response.is_verification && response.action_recorded) {
-            // This was a verification request - recorded as action
-            responseDiv.innerHTML = `
-                <div class="verification-response">
-                    <strong>Staff Nurse (Verification - Action Recorded):</strong>
-                    <p>${response.staff_nurse_response}</p>
-                </div>
-            `;
-            
-            // Update counter
-            currentSession.actionCounter++;
-            document.getElementById('actionCounter').textContent = currentSession.actionCounter;
-            
-            // Display real-time feedback
-            if (response.feedback) {
-                displayRealtimeFeedback(response.feedback, null);
-            }
-        } else if (response.is_verification && response.already_performed) {
-            // Verification already done
-            responseDiv.innerHTML = `
-                <div class="info-message">
-                    <strong>Staff Nurse:</strong>
-                    <p>${response.staff_nurse_response}</p>
-                </div>
-            `;
-        } else {
-            // Regular guidance
-            responseDiv.innerHTML = `
-                <strong>Staff Nurse (Guidance):</strong>
-                <p>${response.staff_nurse_response}</p>
-            `;
-        }
-
-        if (response.is_verification && response.action_recorded) {
-            if (response.staff_nurse_audio && response.staff_nurse_audio.audio_base64) {
-                await playAudioFromBase64(
-                    response.staff_nurse_audio.audio_base64,
-                    response.staff_nurse_audio.content_type
-                );
-            }
-
-            if (response.feedback_audio && response.feedback_audio.audio_base64) {
-                await playAudioFromBase64(
-                    response.feedback_audio.audio_base64,
-                    response.feedback_audio.content_type
-                );
-            }
-        } else if (response.staff_nurse_audio && response.staff_nurse_audio.audio_base64) {
-            playAudioFromBase64(
-                response.staff_nurse_audio.audio_base64,
-                response.staff_nurse_audio.content_type
-            );
-        }
-        
         input.value = '';
-        
     } catch (error) {
         console.error('Failed to ask staff nurse:', error);
     }
@@ -1019,16 +898,6 @@ async function askStaffNurse(messageOverride) {
 
 async function finishStep(step) {
     try {
-        if (canUseWebSocket()) {
-            currentSession.awaitingStepCompletion = true;
-            currentSession.feedbackRenderedForPendingStep = step === 'cleaning_and_dressing';
-            const sent = sendWsEvent('step_complete', { step });
-            if (sent) return;
-            currentSession.awaitingStepCompletion = false;
-            currentSession.feedbackRenderedForPendingStep = false;
-            currentSession.deferredNextStep = null;
-        }
-
         const response = await apiCall('/session/step', 'POST', {
             session_id: currentSession.sessionId,
             step: step
@@ -1165,13 +1034,6 @@ function closeFeedbackModal() {
 }
 
 function continueToNextStep() {
-    if (canUseWebSocket() && currentSession.currentStep === 'history' && currentSession.awaitingStepCompletion) {
-        const sent = sendWsEvent('confirm_step_transition');
-        if (sent) {
-            return;
-        }
-    }
-
     closeFeedbackModal();
     
     // Navigate to next step

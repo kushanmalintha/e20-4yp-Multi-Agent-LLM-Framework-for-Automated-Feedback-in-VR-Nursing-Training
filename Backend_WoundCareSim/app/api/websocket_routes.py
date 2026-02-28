@@ -307,6 +307,56 @@ async def websocket_endpoint(session_id: str, websocket: WebSocket):
                     "feedback",
                 )
 
+            elif event == "mcq_answer":
+                question_id = data.get("question_id")
+                answer = data.get("answer")
+                if not question_id or answer is None:
+                    await _send_error(websocket, "question_id and answer are required")
+                    continue
+
+                if session.get("current_step") != Step.ASSESSMENT.value:
+                    await _send_error(websocket, "MCQ answers are only allowed in assessment")
+                    continue
+
+                questions = session["scenario_metadata"].get("assessment_questions", [])
+                question = next((q for q in questions if q.get("id") == question_id), None)
+                if not question:
+                    await _send_error(websocket, "Question not found")
+                    continue
+
+                correct_answer = question.get("correct_answer")
+                is_correct = answer == correct_answer
+
+                if "mcq_answers" not in session:
+                    session["mcq_answers"] = {}
+                session["mcq_answers"][question_id] = answer
+
+                print("\n" + "=" * 60)
+                print(f"MCQ ANSWER - Question: {question_id}")
+                print("=" * 60)
+                print(f"Question: {question.get('question')}")
+                print(f"Student Answer: {answer}")
+                print(f"Correct Answer: {correct_answer}")
+                print(f"Result: {'✓ CORRECT' if is_correct else '✗ INCORRECT'}")
+                print("=" * 60 + "\n")
+
+                explanation = question.get("explanation", "No explanation provided.")
+                correctness_text = "correct" if is_correct else "incorrect"
+                feedback_text = f"Your answer is {correctness_text}. {explanation}"
+                feedback_audio = await _safe_tts(feedback_text, role="assessment_feedback")
+
+                await _send_server_event(
+                    websocket,
+                    "mcq_answer_result",
+                    {
+                        "question_id": question_id,
+                        "is_correct": is_correct,
+                        "explanation": explanation,
+                        "status": "correct" if is_correct else "incorrect",
+                        "feedback_audio": feedback_audio,
+                    },
+                )
+
             elif event == "step_complete":
                 requested_step = data.get("step")
                 current_step = session.get("current_step")
