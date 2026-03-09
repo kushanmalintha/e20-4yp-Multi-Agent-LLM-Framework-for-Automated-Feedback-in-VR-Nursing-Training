@@ -1,3 +1,4 @@
+import asyncio
 import base64
 from typing import Any, Dict, Optional
 
@@ -423,6 +424,10 @@ async def websocket_endpoint(session_id: str, websocket: WebSocket):
                     continue
 
                 elif current_step == Step.ASSESSMENT.value:
+                    # Wait for the last MCQ explanation audio to finish before
+                    # sending the assessment summary TTS
+                    await asyncio.sleep(18)
+
                     mcq_answers = session.get("mcq_answers", data.get("student_mcq_answers") or {})
                     evaluation = await evaluation_service.aggregate_evaluations(
                         session_id=session_id,
