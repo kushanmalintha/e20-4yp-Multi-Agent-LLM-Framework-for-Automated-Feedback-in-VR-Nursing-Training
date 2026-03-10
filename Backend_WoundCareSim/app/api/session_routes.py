@@ -19,6 +19,8 @@ from app.agents.feedback_narrator_agent import FeedbackNarratorAgent
 
 from app.utils.mcq_evaluator import MCQEvaluator
 from app.services.groq_audio_service import GroqAudioService, synthesize_speech
+from app.services.student_log_service import StudentLogService
+from app.scripts.upload_scenario import save_student_log_to_firestore
 
 # NOTE: The imports above are kept because websocket_routes.py imports
 # singletons (session_manager, evaluation_service, clinical_agent, etc.)
@@ -443,4 +445,44 @@ async def complete_step(payload: CompleteStepInput):
         )
 
     response["session_end"] = next_step == Step.COMPLETED.value
+
+    # Auto-save log to Firestore when session reaches COMPLETED
+    if next_step == Step.COMPLETED.value:
+        try:
+            log = StudentLogService.generate(
+                session_id=payload.session_id,
+                session_manager=session_manager,
+                conversation_manager=conversation_manager,
+            )
+            firestore_path = save_student_log_to_firestore(log)
+            response["log_firestore_path"] = firestore_path
+        except Exception as exc:
+            print(f"[LOG] ⚠️  Failed to save student log: {exc}")
+
     return response
+
+
+@router.get("/{session_id}/log")
+async def get_session_log(session_id: str):
+    """
+    Generate and return the full structured student log for a session.
+    The log is also saved to disk at  logs/<session_id>.json.
+    Can be called at any point during or after the session.
+    """
+    session = session_manager.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    try:
+        log = StudentLogService.generate(
+            session_id=session_id,
+            session_manager=session_manager,
+            conversation_manager=conversation_manager,
+        )
+        firestore_path = save_student_log_to_firestore(log)
+        print(f"[LOG] Student log saved to Firestore → {firestore_path}")
+        return log
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Log generation failed: {exc}"
+        ) from exc

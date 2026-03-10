@@ -19,6 +19,8 @@ from app.api.session_routes import (
     patient_agent,
     session_manager,
 )
+from app.services.student_log_service import StudentLogService
+from app.scripts.upload_scenario import save_student_log_to_firestore
 from app.agents.staff_nurse_agent import StaffNurseAgent
 from app.core.state_machine import Step
 from app.rag.retriever import retrieve_with_rag
@@ -478,6 +480,17 @@ async def websocket_endpoint(session_id: str, websocket: WebSocket):
 
                 await _send_server_event(websocket, "step_complete", {"next_step": next_step})
                 if next_step == Step.COMPLETED.value:
+                    # Auto-save student log to Firestore before notifying client
+                    try:
+                        log = StudentLogService.generate(
+                            session_id=session_id,
+                            session_manager=session_manager,
+                            conversation_manager=conversation_manager,
+                        )
+                        firestore_path = save_student_log_to_firestore(log)
+                        print(f"[LOG] Student log saved to Firestore → {firestore_path}")
+                    except Exception as log_exc:
+                        print(f"[LOG] ⚠️  Failed to save student log: {log_exc}")
                     await _send_server_event(websocket, "session_end", {"session_id": session_id})
 
             elif event == "confirm_step_transition":
