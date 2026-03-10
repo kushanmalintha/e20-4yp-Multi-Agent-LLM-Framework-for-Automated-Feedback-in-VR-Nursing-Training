@@ -190,13 +190,28 @@ async def websocket_endpoint(session_id: str, websocket: WebSocket):
 
                 current_step = session.get("current_step")
                 if current_step == Step.CLEANING_AND_DRESSING.value:
-                    is_verification, material_type = _detect_verification_request(student_message)
+                    # Pass any previously established material type so follow-up
+                    # messages like "it's sealed and intact" resolve correctly.
+                    pending_material = session.get("pending_verification_material", "")
+                    is_verification, material_type = _detect_verification_request(
+                        student_message, pending_material
+                    )
                     if is_verification:
                         response = await _handle_verification_as_action(
                             session=session,
                             student_message=student_message,
                             material_type=material_type,
                         )
+
+                        # Track or clear pending material based on nurse verdict
+                        verdict_status = (response.get("feedback") or {}).get("status", "")
+                        if verdict_status in ("missing_details",):
+                            # Nurse asked for more info — remember the material for next turn
+                            session["pending_verification_material"] = material_type or pending_material
+                        else:
+                            # Approved, rejected, or duplicate — conversation is resolved
+                            session.pop("pending_verification_material", None)
+
                         await _send_server_event(
                             websocket,
                             "nurse_message",
@@ -236,7 +251,10 @@ async def websocket_endpoint(session_id: str, websocket: WebSocket):
                     await _send_error(websocket, "Verification text is required")
                     continue
 
-                is_verification, material_type = _detect_verification_request(student_message)
+                pending_material = session.get("pending_verification_material", "")
+                is_verification, material_type = _detect_verification_request(
+                    student_message, pending_material
+                )
                 if not is_verification:
                     await _send_error(websocket, "Could not detect verification request")
                     continue
@@ -246,6 +264,14 @@ async def websocket_endpoint(session_id: str, websocket: WebSocket):
                     student_message=student_message,
                     material_type=material_type,
                 )
+
+                # Track or clear pending material based on nurse verdict
+                verdict_status = (response.get("feedback") or {}).get("status", "")
+                if verdict_status == "missing_details":
+                    session["pending_verification_material"] = material_type or pending_material
+                else:
+                    session.pop("pending_verification_material", None)
+
                 await _send_server_event(
                     websocket,
                     "nurse_message",
