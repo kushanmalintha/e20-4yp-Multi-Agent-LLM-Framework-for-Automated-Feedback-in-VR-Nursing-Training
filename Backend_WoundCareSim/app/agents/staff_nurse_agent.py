@@ -107,9 +107,9 @@ class StaffNurseAgent(BaseAgent):
                 f"{patient_context_note}\n\n"
                 "TASK:\n"
                 "- Student indicated they are finished with the current step\n"
-                "- Give a brief 1–2 sentence hint about what the next step involves\n"
-                "- Do NOT list everything — just the immediate first action to take\n"
-                "- Keep responses short, clear, and spoken-friendly\n"
+                "- Briefly explain what the next step is about — its purpose and what it involves\n"
+                "- Do NOT tell the student what to do or give instructions\n"
+                "- Keep it to 1–2 sentences, spoken-friendly\n"
             )
             user_prompt = (
                 f"CURRENT STEP: {current_step}\n"
@@ -131,9 +131,9 @@ class StaffNurseAgent(BaseAgent):
                 "- The student controls step progression\n\n"
                 f"{patient_context_note}\n\n"
                 "TASK:\n"
-                "- Student is asking what to do in the current step\n"
-                "- Give only a brief, specific hint about the immediate action to take\n"
-                "- Do NOT explain the full step or list all tasks — just the next small thing to do\n"
+                "- Student is asking about the current step\n"
+                "- Briefly explain what this step is about — its purpose and what it involves\n"
+                "- Do NOT tell the student what to do or give instructions\n"
                 "- Keep it to 1–2 sentences, spoken-friendly\n"
             )
             user_prompt = (

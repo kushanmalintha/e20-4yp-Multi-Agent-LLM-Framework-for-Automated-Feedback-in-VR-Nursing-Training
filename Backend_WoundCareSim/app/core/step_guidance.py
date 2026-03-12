@@ -1,11 +1,11 @@
 STEP_GUIDANCE = {
     "history": (
-        "Start by introducing yourself to the patient and asking about their complaint."
+        "This is the history taking step, where you gather information about the patient's background and condition through conversation."
     ),
     "assessment": (
-        "Look at the wound and answer the multiple-choice questions on your screen."
+        "This is the wound assessment step, where you observe and evaluate the wound's current condition."
     ),
     "cleaning_and_dressing": (
-        "Begin with hand hygiene, then clean the trolley and gather your materials."
+        "This is the preparation step for wound cleaning and dressing, where you set up the trolley and ensure all materials are ready and safe to use."
     )
 }
