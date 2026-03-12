@@ -37,11 +37,11 @@ export async function uploadGuideline(file) {
 }
 
 export async function getStudentSessions(studentId) {
-  const response = await API.get(`/teacher/student/${studentId}/sessions`);
+  const response = await API.get(`/students/${studentId}/sessions`);
   return response.data;
 }
 
 export async function getSessionDetail(studentId, sessionId) {
-  const response = await API.get(`/teacher/student/${studentId}/sessions/${sessionId}`);
+  const response = await API.get(`/students/${studentId}/sessions/${sessionId}`);
   return response.data;
 }

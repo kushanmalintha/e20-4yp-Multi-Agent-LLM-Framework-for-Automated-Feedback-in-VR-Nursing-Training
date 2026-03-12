@@ -20,7 +20,8 @@ export default function StudentPerformance() {
     setSessions(null);
     try {
       const data = await getStudentSessions(trimmed);
-      setSessions(Array.isArray(data) ? data : data.sessions_summary || []);
+      // Backend returns { student_id, sessions: [...] }
+      setSessions(Array.isArray(data) ? data : data.sessions || []);
       setLoadedStudentId(trimmed);
     } catch (err) {
       setError(err.response?.data?.detail || err.message || "Failed to load sessions.");
@@ -103,16 +104,27 @@ export default function StudentPerformance() {
 }
 
 function SessionSummaryCard({ session, onView }) {
-  const isCompleted = session.final_step_reached === "completed";
+  // Session data comes from the full session document (steps + session meta)
+  const sessionMeta = session.session || session;
+  const overallSummary = session.overall_summary || {};
+  const cleaningPrep = overallSummary.cleaning_preparation || {};
 
-  const safetyItems = session.critical_safety_concerns || [];
+  const isCompleted = sessionMeta.final_step_reached === "completed";
 
-  const hygieneOk = session.hand_hygiene_compliance;
-  const solutionOk = session.solution_verified;
-  const dressingOk = session.dressing_verified;
+  const safetyItems = overallSummary.critical_safety_concerns || [];
 
-  const formattedDate = session.started_at
-    ? new Date(session.started_at).toLocaleDateString(undefined, {
+  const hygieneOk = cleaningPrep.hand_hygiene_compliance;
+  const solutionOk = cleaningPrep.solution_verified;
+  const dressingOk = cleaningPrep.dressing_verified;
+
+  const historScore = overallSummary.history_composite_score;
+  const historyInterpretation = overallSummary.history_interpretation;
+  const assessmentScore = overallSummary.assessment_score_percentage;
+  const allActionsCompleted = cleaningPrep.all_actions_completed;
+
+  const startedAt = sessionMeta.started_at;
+  const formattedDate = startedAt
+    ? new Date(startedAt).toLocaleDateString(undefined, {
         year: "numeric",
         month: "short",
         day: "numeric",
@@ -135,11 +147,11 @@ function SessionSummaryCard({ session, onView }) {
         }}
       >
         <div>
-          <span className="scenario-meta">{session.scenario_id || "—"}</span>
-          <h3 style={{ marginTop: "6px" }}>{session.scenario_title || "Untitled Scenario"}</h3>
+          <span className="scenario-meta">{sessionMeta.scenario_id || "—"}</span>
+          <h3 style={{ marginTop: "6px" }}>{sessionMeta.scenario_title || "Untitled Scenario"}</h3>
         </div>
         <span className={`badge ${isCompleted ? "badge-success" : ""}`}>
-          {isCompleted ? "Completed" : (session.final_step_reached || "In Progress")}
+          {isCompleted ? "Completed" : (sessionMeta.final_step_reached || "In Progress")}
         </span>
       </div>
 
@@ -164,12 +176,12 @@ function SessionSummaryCard({ session, onView }) {
           <div
             style={{ fontSize: "1.6rem", fontWeight: "800", color: "var(--accent)", lineHeight: 1 }}
           >
-            {session.history_composite_score != null ? `${session.history_composite_score}/100` : "—"}
+            {historScore != null ? `${historScore}/100` : "—"}
           </div>
           <div className="section-title" style={{ marginTop: "6px" }}>
             History
           </div>
-          {session.history_interpretation && (
+          {historyInterpretation && (
             <div
               className="muted"
               style={{
@@ -182,7 +194,7 @@ function SessionSummaryCard({ session, onView }) {
                 WebkitBoxOrient: "vertical",
               }}
             >
-              {session.history_interpretation}
+              {historyInterpretation}
             </div>
           )}
         </div>
@@ -199,9 +211,7 @@ function SessionSummaryCard({ session, onView }) {
           <div
             style={{ fontSize: "1.6rem", fontWeight: "800", color: "var(--accent)", lineHeight: 1 }}
           >
-            {session.assessment_score_percentage != null
-              ? `${session.assessment_score_percentage}%`
-              : "—"}
+            {assessmentScore != null ? `${assessmentScore}%` : "—"}
           </div>
           <div className="section-title" style={{ marginTop: "6px" }}>
             Assessment
@@ -221,17 +231,17 @@ function SessionSummaryCard({ session, onView }) {
             style={{
               fontSize: "1.6rem",
               fontWeight: "800",
-              color: session.all_actions_completed ? "var(--success-text)" : "var(--error-text)",
+              color: allActionsCompleted ? "var(--success-text)" : "var(--error-text)",
               lineHeight: 1,
             }}
           >
-            {session.all_actions_completed ? "✓" : "✗"}
+            {allActionsCompleted ? "✓" : "✗"}
           </div>
           <div className="section-title" style={{ marginTop: "6px" }}>
             Cleaning
           </div>
           <div className="muted" style={{ fontSize: "0.72rem", marginTop: "4px" }}>
-            {session.all_actions_completed ? "All Done" : "Incomplete"}
+            {allActionsCompleted ? "All Done" : "Incomplete"}
           </div>
         </div>
       </div>
