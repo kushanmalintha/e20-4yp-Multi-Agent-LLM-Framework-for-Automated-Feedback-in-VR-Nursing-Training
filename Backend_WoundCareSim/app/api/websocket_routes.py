@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
 from app.api.session_routes import (
+    _build_dynamic_rag_query,
     _detect_verification_request,
     _handle_verification_as_action,
     _safe_tts,
@@ -515,18 +516,15 @@ async def websocket_endpoint(session_id: str, websocket: WebSocket):
                 next_step = session_manager.advance_step(session_id)
 
                 if next_step == Step.CLEANING_AND_DRESSING.value:
-                    _clinical_context = session.get("clinical_context", {})
-                    _risk_factors = _clinical_context.get("risk_factors", [])
-
-                    cleaning_query = (
-                        "wound cleaning and dressing preparation steps sequence "
-                        "prerequisites required actions"
+                    cleaning_query = await _build_dynamic_rag_query(
+                        session=session,
+                        step=Step.CLEANING_AND_DRESSING.value,
+                        action_events=session.get("action_events", []),
+                        extra_focus=(
+                            "Retrieve the guideline sequence, prerequisites, hand hygiene, "
+                            "aseptic technique, sterile field setup, and dressing preparation steps."
+                        ),
                     )
-                    if "diabetes" in _risk_factors:
-                        cleaning_query += (
-                            " diabetic patient infection risk impaired immune response "
-                            "elevated contamination risk aseptic technique"
-                        )
 
                     rag_result = await retrieve_with_rag(
                         query=cleaning_query,
@@ -553,18 +551,15 @@ async def websocket_endpoint(session_id: str, websocket: WebSocket):
                 next_step = session_manager.advance_step(session_id)
 
                 if next_step == Step.CLEANING_AND_DRESSING.value:
-                    _clinical_context = session.get("clinical_context", {})
-                    _risk_factors = _clinical_context.get("risk_factors", [])
-
-                    cleaning_query = (
-                        "wound cleaning and dressing preparation steps sequence "
-                        "prerequisites required actions"
+                    cleaning_query = await _build_dynamic_rag_query(
+                        session=session,
+                        step=Step.CLEANING_AND_DRESSING.value,
+                        action_events=session.get("action_events", []),
+                        extra_focus=(
+                            "Retrieve the guideline sequence, prerequisites, hand hygiene, "
+                            "aseptic technique, sterile field setup, and dressing preparation steps."
+                        ),
                     )
-                    if "diabetes" in _risk_factors:
-                        cleaning_query += (
-                            " diabetic patient infection risk impaired immune response "
-                            "elevated contamination risk aseptic technique"
-                        )
 
                     rag_result = await retrieve_with_rag(
                         query=cleaning_query,

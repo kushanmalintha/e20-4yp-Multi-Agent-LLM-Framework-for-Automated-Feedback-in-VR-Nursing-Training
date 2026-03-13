@@ -8,7 +8,12 @@ from app.services.evaluation_service import EvaluationService
 from app.core.coordinator import Coordinator
 from app.core.state_machine import Step
 from app.services.action_event_service import ActionEventService
-from app.rag.retriever import retrieve_with_rag, extract_prerequisite_map
+from app.rag.retriever import (
+    build_rag_context,
+    extract_prerequisite_map,
+    generate_rag_query,
+    retrieve_with_rag,
+)
 
 from app.agents.patient_agent import PatientAgent
 from app.agents.communication_agent import CommunicationAgent
@@ -113,6 +118,24 @@ async def _safe_tts(text: str, role: str) -> Optional[Dict[str, Any]]:
     except Exception as exc:
         print(f"⚠️  TTS failed: {exc}")
         return None
+
+
+async def _build_dynamic_rag_query(
+    session: dict,
+    step: str,
+    transcript: str = "",
+    action_events: Optional[List[Dict[str, Any]]] = None,
+    extra_focus: str = "",
+) -> str:
+    context = build_rag_context(
+        scenario_metadata=session.get("scenario_metadata", {}),
+        clinical_context=session.get("clinical_context", {}),
+        step=step,
+        transcript=transcript,
+        action_events=action_events or session.get("action_events", []),
+        extra_focus=extra_focus,
+    )
+    return await generate_rag_query(context)
 
 
 # -------------------------------------------------
@@ -279,8 +302,16 @@ async def _handle_verification_as_action(
     # Get cached RAG guidelines
     rag_guidelines = session.get("cached_rag_guidelines", "")
     if not rag_guidelines:
+        verification_query = await _build_dynamic_rag_query(
+            session=session,
+            step=Step.CLEANING_AND_DRESSING.value,
+            extra_focus=(
+                "Material verification prerequisites, acceptable sterile packaging, "
+                "and correct wound cleaning and dressing preparation sequence."
+            ),
+        )
         rag_result = await retrieve_with_rag(
-            query="wound cleaning and dressing preparation steps sequence prerequisites verification",
+            query=verification_query,
             scenario_id=session["scenario_id"]
         )
         rag_guidelines = rag_result.get("text", "")
@@ -498,18 +529,15 @@ async def complete_step(payload: CompleteStepInput):
     print(f"\n[STEP START] current_step={next_step}\n")
 
     if next_step == Step.CLEANING_AND_DRESSING.value:
-        _clinical_context = session.get("clinical_context", {})
-        _risk_factors = _clinical_context.get("risk_factors", [])
-
-        cleaning_query = (
-            "wound cleaning and dressing preparation steps sequence "
-            "prerequisites required actions"
+        cleaning_query = await _build_dynamic_rag_query(
+            session=session,
+            step=Step.CLEANING_AND_DRESSING.value,
+            action_events=session.get("action_events", []),
+            extra_focus=(
+                "Retrieve the guideline sequence, prerequisites, hand hygiene, "
+                "aseptic technique, sterile field setup, and dressing preparation steps."
+            ),
         )
-        if "diabetes" in _risk_factors:
-            cleaning_query += (
-                " diabetic patient infection risk impaired immune response "
-                "elevated contamination risk aseptic technique"
-            )
 
         rag_result = await retrieve_with_rag(
             query=cleaning_query,

@@ -1,6 +1,6 @@
 from typing import Dict, List, Any, Optional
 
-from app.rag.retriever import retrieve_with_rag
+from app.rag.retriever import build_rag_context, generate_rag_query, retrieve_with_rag
 from app.core.coordinator import Coordinator
 from app.services.session_manager import SessionManager
 from app.core.state_machine import Step
@@ -58,22 +58,18 @@ class EvaluationService:
         elif step == Step.CLEANING_AND_DRESSING.value:
             action_events = session.get("action_events", [])
 
-        risk_factors = clinical_context.get("risk_factors", [])
-
-        history_query = "patient history taking guidelines nursing communication assessment questions"
-        if "diabetes" in risk_factors:
-            history_query += " diabetic patient wound healing infection risk comorbidities"
-
-        rag_query_map = {
-            Step.HISTORY.value: history_query,
-            Step.CLEANING_AND_DRESSING.value:
-                "wound cleaning and dressing preparation procedure protocol hand hygiene aseptic technique",
-        }
-
         rag_context = ""
-        if step in rag_query_map:
+        if step in {Step.HISTORY.value, Step.CLEANING_AND_DRESSING.value}:
+            rag_query_context = build_rag_context(
+                scenario_metadata=scenario_metadata,
+                clinical_context=clinical_context,
+                step=step,
+                transcript=transcript,
+                action_events=action_events,
+            )
+            rag_query = await generate_rag_query(rag_query_context)
             rag = await retrieve_with_rag(
-                query=rag_query_map[step],
+                query=rag_query,
                 scenario_id=session["scenario_id"]
             )
             rag_context = rag.get("text", "")
